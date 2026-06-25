@@ -1,9 +1,9 @@
-import HeroBackground from "./HeroBackground";
+﻿import HeroBackground from "./HeroBackground";
 import HeroContent from "./HeroContent";
 import PipelineFlow from "./PipelineFlow";
 import HeroDashboard from "./HeroDashboard";
 
-// Three-zone composition: input (content) → process (pipeline) → proof
+// Three-zone composition: input (content) â†’ process (pipeline) â†’ proof
 // (dashboard). On xl this reads left-to-right as one connected scene; below xl
 // it stacks in the same narrative order, preserving the hierarchy.
 
@@ -15,19 +15,19 @@ export default function Hero() {
     >
       <HeroBackground />
 
-      <div className="relative z-10 w-full container-page pt-28 pb-20 lg:pt-32">
+      <div className="relative z-10 w-full container-page pt-32 pb-20 lg:pt-40">
         <div className="mx-auto max-w-2xl xl:max-w-none grid grid-cols-1 xl:grid-cols-12 gap-12 xl:gap-6 items-center">
-          {/* Input — the pitch */}
+          {/* Input â€” the pitch */}
           <div className="xl:col-span-4">
             <HeroContent />
           </div>
 
-          {/* Process — the pipeline bridge */}
+          {/* Process â€” the pipeline bridge */}
           <div className="flex justify-center xl:col-span-3">
             <PipelineFlow />
           </div>
 
-          {/* Proof — the dashboard */}
+          {/* Proof â€” the dashboard */}
           <div className="xl:col-span-5">
             <HeroDashboard />
           </div>
@@ -36,3 +36,4 @@ export default function Hero() {
     </section>
   );
 }
+

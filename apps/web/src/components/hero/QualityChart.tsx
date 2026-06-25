@@ -4,13 +4,12 @@ import { motion } from "framer-motion";
 
 interface QualityChartProps {
   animationDelay?: number;
+  isGlowing?: boolean;
 }
 
-// Weekly candidate-quality index. SVG only, no chart library.
 const DAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
-const VALUES = [38, 56, 47, 64, 55, 73, 92]; // 0–100, trending up to the weekend
+const VALUES = [38, 56, 47, 64, 55, 73, 92];
 
-// Geometry
 const W = 300;
 const H = 124;
 const PAD_X = 8;
@@ -33,13 +32,22 @@ const AREA_PATH = `${LINE_PATH} L ${POINTS[POINTS.length - 1].x.toFixed(
   1
 )} ${BASELINE} L ${POINTS[0].x.toFixed(1)} ${BASELINE} Z`;
 
-export default function QualityChart({ animationDelay = 0 }: QualityChartProps) {
+export default function QualityChart({
+  animationDelay = 0,
+  isGlowing = false,
+}: QualityChartProps) {
   return (
-    <svg
+    <motion.svg
       viewBox={`0 0 ${W} ${H}`}
       className="w-full h-auto overflow-visible"
       role="img"
       aria-label="Candidate quality index across the week, trending upward toward the weekend"
+      animate={{
+        filter: isGlowing
+          ? "drop-shadow(0 0 8px rgba(255,77,141,0.42))"
+          : "drop-shadow(0 0 0px rgba(255,77,141,0))",
+      }}
+      transition={{ duration: 0.35 }}
     >
       <defs>
         <linearGradient id="qcArea" x1="0" y1="0" x2="0" y2="1">
@@ -66,7 +74,7 @@ export default function QualityChart({ animationDelay = 0 }: QualityChartProps) 
         />
       ))}
 
-      {/* Area fill — fades in after the line draws */}
+      {/* Area fill */}
       <motion.path
         d={AREA_PATH}
         fill="url(#qcArea)"
@@ -75,7 +83,7 @@ export default function QualityChart({ animationDelay = 0 }: QualityChartProps) 
         transition={{ delay: animationDelay + 0.7, duration: 0.6 }}
       />
 
-      {/* Line — draws left to right */}
+      {/* Line */}
       <motion.path
         d={LINE_PATH}
         fill="none"
@@ -88,7 +96,7 @@ export default function QualityChart({ animationDelay = 0 }: QualityChartProps) 
         transition={{ delay: animationDelay, duration: 1.1, ease: "easeInOut" }}
       />
 
-      {/* Vertices — pop in sequentially; the final point is emphasised */}
+      {/* Vertices */}
       {POINTS.map((p, i) => {
         const isLast = i === POINTS.length - 1;
         return (
@@ -125,6 +133,6 @@ export default function QualityChart({ animationDelay = 0 }: QualityChartProps) 
           {d}
         </motion.text>
       ))}
-    </svg>
+    </motion.svg>
   );
 }

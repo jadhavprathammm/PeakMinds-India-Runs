@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import QualityChart from "./QualityChart";
 import ReasoningPanel, { type ReasoningFactor } from "./ReasoningPanel";
@@ -63,12 +64,10 @@ function ScoreRing({ score, delay = 0 }: { score: number; delay?: number }) {
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
-//
-// The "proof" of the scene: a spotlight Best-Match card with a floating score
-// ring, then a secondary row (reasoning + quality). Cards enter from different
-// directions and sit on a soft accent halo for depth.
 
 export default function HeroDashboard() {
+  const [chartHovered, setChartHovered] = useState(false);
+
   return (
     <div className="relative w-full">
       {/* Soft halo behind the whole cluster */}
@@ -82,8 +81,13 @@ export default function HeroDashboard() {
         <motion.div
           initial={{ opacity: 0, y: 24, x: 12 }}
           animate={{ opacity: 1, y: 0, x: 0 }}
+          whileHover={{
+            y: -4,
+            boxShadow: "0 28px 64px rgba(0,0,0,0.60)",
+            transition: { type: "spring", stiffness: 280, damping: 28 },
+          }}
           transition={{ delay: 0.3, duration: 0.85, ease: easeOutQuart }}
-          className="relative overflow-hidden rounded-card border border-border bg-surface/90 backdrop-blur-sm shadow-elevated p-5 lg:p-6"
+          className="relative overflow-hidden rounded-card border border-border bg-surface/90 backdrop-blur-sm shadow-elevated p-5 lg:p-6 cursor-default transition-[border-color] duration-200 hover:border-white/[0.14]"
         >
           {/* Top accent edge + interior corner warmth */}
           <div
@@ -116,11 +120,18 @@ export default function HeroDashboard() {
               </span>
             </div>
 
-            {/* Floating score ring */}
+            {/* Floating score ring — rotates + scales on hover */}
             <div className="shrink-0 flex flex-col items-center">
-              <div className="rounded-2xl border border-border bg-surface-elevated/80 shadow-card p-1.5">
+              <motion.div
+                whileHover={{
+                  rotate: 2.5,
+                  scale: 1.02,
+                  transition: { type: "spring", stiffness: 350, damping: 25 },
+                }}
+                className="rounded-2xl border border-border bg-surface-elevated/80 shadow-card p-1.5 cursor-default"
+              >
                 <ScoreRing score={94} delay={0.6} />
-              </div>
+              </motion.div>
               <span className="text-[9px] font-semibold text-subtle uppercase tracking-wider mt-2">
                 Match Score
               </span>
@@ -155,17 +166,20 @@ export default function HeroDashboard() {
             <ReasoningPanel factors={FACTORS} startDelay={0.75} />
           </motion.div>
 
+          {/* Quality chart — glow activates on hover */}
           <motion.div
             initial={{ opacity: 0, y: 20, x: 10 }}
             animate={{ opacity: 1, y: 0, x: 0 }}
+            onHoverStart={() => setChartHovered(true)}
+            onHoverEnd={() => setChartHovered(false)}
             transition={{ delay: 0.68, duration: 0.75, ease: easeOutQuart }}
-            className="rounded-card border border-border bg-surface/90 backdrop-blur-sm shadow-card p-5 flex flex-col"
+            className="rounded-card border border-border bg-surface/90 backdrop-blur-sm shadow-card p-5 flex flex-col cursor-default"
           >
             <span className="text-[10px] font-semibold text-subtle uppercase tracking-widest block mb-3">
               Quality Trend
             </span>
             <div className="flex-1 flex items-center">
-              <QualityChart animationDelay={0.85} />
+              <QualityChart animationDelay={0.85} isGlowing={chartHovered} />
             </div>
           </motion.div>
         </div>
