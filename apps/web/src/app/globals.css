@@ -1,0 +1,15 @@
+/* =============================================================================
+   PeakMinds — Global Stylesheet (orchestrator)
+   Premium, dark, minimal SaaS foundation. Token-driven and modular: each
+   concern lives in its own partial under src/styles/ so future sprints can
+   extend the system without touching this file.
+
+   Order matters: Tailwind first, then tokens (@theme), then base layer, then
+   component primitives.
+   ============================================================================= */
+
+@import "tailwindcss";
+@import "../styles/tokens.css";
+@import "../styles/base.css";
+@import "../styles/typography.css";
+@import "../styles/components.css";

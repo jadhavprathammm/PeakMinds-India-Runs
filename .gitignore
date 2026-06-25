@@ -1,0 +1,20 @@
+# Runtime binary artifacts (too large for git, must be mounted/downloaded)
+services/ranking-engine/artifacts/*.npy
+services/ranking-engine/artifacts/*.parquet
+services/ranking-engine/artifacts/*.csv.gz
+
+# Raw candidate data (large, must be placed manually or via env var)
+data/candidates.jsonl
+data/eda/candidate_features.csv
+
+# EDA scratch outputs (regenerable)
+services/ranking-engine/experiments/outputs/
+
+# Python bytecode
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+
+# OS artefacts
+.DS_Store
+Thumbs.db

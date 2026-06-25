@@ -1,0 +1,61 @@
+/* =============================================================================
+   PeakMinds — Typography Scale
+   Semantic, ready-to-use type styles that bundle size + line-height + weight +
+   tracking. Built on the --text-* tokens. Use these classes directly:
+     .type-hero, .type-section, .type-card-title, .type-body, .type-small
+   (.type-eyebrow is a small uppercase accent label.)
+   ============================================================================= */
+
+@layer components {
+  .type-hero {
+    font-size: var(--text-hero);
+    line-height: 1.04;
+    font-weight: 600;
+    letter-spacing: -0.03em;
+    color: var(--color-foreground);
+    text-wrap: balance;
+  }
+
+  .type-section {
+    font-size: var(--text-section);
+    line-height: 1.12;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--color-foreground);
+    text-wrap: balance;
+  }
+
+  .type-card-title {
+    font-size: var(--text-card);
+    line-height: 1.35;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--color-foreground);
+  }
+
+  .type-body {
+    font-size: var(--text-body);
+    line-height: 1.6;
+    font-weight: 400;
+    letter-spacing: -0.005em;
+    color: var(--color-muted);
+    text-wrap: pretty;
+  }
+
+  .type-small {
+    font-size: var(--text-small);
+    line-height: 1.5;
+    font-weight: 400;
+    letter-spacing: 0;
+    color: var(--color-subtle);
+  }
+
+  .type-eyebrow {
+    font-size: var(--text-small);
+    line-height: 1;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+}

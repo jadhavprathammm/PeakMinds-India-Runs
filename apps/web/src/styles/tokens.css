@@ -1,0 +1,120 @@
+/* =============================================================================
+   PeakMinds — Design Tokens
+   Single source of truth for the visual language. Tailwind v4 reads these via
+   @theme, which (a) emits them as :root CSS variables and (b) generates utility
+   classes (e.g. bg-accent, rounded-card, text-hero, shadow-card, max-w-page,
+   ease-out-quart). Keep all primitive values here.
+   ============================================================================= */
+
+@theme {
+  /* ---------------------------------------------------------------------------
+     Typeface mapping (Geist now — to be swapped for Styrene later)
+     next/font injects --font-geist-* on <body>; we alias them to the semantic
+     --font-sans / --font-mono so `font-sans` and var(--font-sans) resolve.
+     --------------------------------------------------------------------------- */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+    Consolas, monospace;
+
+  /* ---------------------------------------------------------------------------
+     Colors — Brand accent (Modern Pink)
+     --------------------------------------------------------------------------- */
+  --color-accent: #ff4d8d;
+  --color-accent-hover: #ff66a0;
+  --color-accent-pressed: #e63e7b;
+  --color-accent-foreground: #0a0a0a;
+  --color-accent-subtle: rgba(255, 77, 141, 0.12);
+  --color-accent-ring: rgba(255, 77, 141, 0.45);
+
+  /* ---------------------------------------------------------------------------
+     Colors — Surfaces (dark)
+     --------------------------------------------------------------------------- */
+  --color-background: #0a0a0a;
+  --color-surface: #111111;
+  --color-surface-hover: #161616;
+  --color-surface-elevated: #1a1a1a;
+
+  /* ---------------------------------------------------------------------------
+     Colors — Text
+     --------------------------------------------------------------------------- */
+  --color-foreground: #fafafa;
+  --color-muted: #a1a1aa;
+  --color-subtle: #71717a;
+  --color-faint: #52525b;
+
+  /* ---------------------------------------------------------------------------
+     Colors — Borders (very subtle, as specified)
+     --------------------------------------------------------------------------- */
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.14);
+
+  /* ---------------------------------------------------------------------------
+     Border Radius
+     --------------------------------------------------------------------------- */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-input: 12px;
+  --radius-button: 16px; /* button radius */
+  --radius-lg: 16px;
+  --radius-card: 24px; /* card radius */
+  --radius-xl: 24px;
+  --radius-full: 9999px;
+
+  /* ---------------------------------------------------------------------------
+     Shadows (restrained, tuned for a dark surface — no flashy glows)
+     --------------------------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.35);
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.4), 0 12px 32px rgba(0, 0, 0, 0.28);
+  --shadow-elevated: 0 16px 48px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 8px 28px rgba(255, 77, 141, 0.25);
+
+  /* ---------------------------------------------------------------------------
+     Container Widths (generate max-w-page / max-w-narrow / max-w-wide)
+     --------------------------------------------------------------------------- */
+  --container-narrow: 768px;
+  --container-page: 1200px;
+  --container-wide: 1440px;
+
+  /* ---------------------------------------------------------------------------
+     Section Spacing (also exposed as CSS vars for component classes)
+     --------------------------------------------------------------------------- */
+  --spacing-gutter: 1.5rem; /* horizontal page gutter */
+  --spacing-block: 3rem; /* inner block rhythm */
+  --spacing-section: 6rem; /* vertical section padding */
+  --spacing-section-lg: 8rem; /* roomy section padding */
+
+  /* ---------------------------------------------------------------------------
+     Button Sizes (heights — consumed by .btn-sm / .btn-md / .btn-lg)
+     --------------------------------------------------------------------------- */
+  --size-button-sm: 2.25rem; /* 36px */
+  --size-button-md: 2.75rem; /* 44px */
+  --size-button-lg: 3.25rem; /* 52px */
+
+  /* ---------------------------------------------------------------------------
+     Typography Scale (generate text-hero / text-section / ... with line-height)
+     Fluid clamps on the large end for premium responsive scaling.
+     --------------------------------------------------------------------------- */
+  --text-hero: clamp(2.5rem, 4vw + 1rem, 4rem);
+  --text-hero--line-height: 1.04;
+  --text-section: clamp(1.75rem, 2vw + 0.75rem, 2.5rem);
+  --text-section--line-height: 1.12;
+  --text-card: 1.25rem;
+  --text-card--line-height: 1.35;
+  --text-body: 1rem;
+  --text-body--line-height: 1.6;
+  --text-small: 0.875rem;
+  --text-small--line-height: 1.5;
+
+  /* ---------------------------------------------------------------------------
+     Animation — Durations & Easings (durations stay CSS vars + JS mirror;
+     easings also generate ease-out-quart / ease-in-out-soft utilities)
+     --------------------------------------------------------------------------- */
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --duration-slow: 320ms;
+  --duration-slower: 500ms;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-in-out-soft: cubic-bezier(0.4, 0, 0.2, 1);
+}

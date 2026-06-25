@@ -1,0 +1,15 @@
+# Python 3.13 (cpython-313, confirmed by __pycache__ artifacts)
+#
+# Core numerics / data
+numpy>=2.0
+pandas>=2.2
+pyarrow>=17.0          # parquet I/O for all artifact files
+
+# Visualisation (EDA scripts only — not on the ranking critical path)
+matplotlib>=3.9
+
+# Semantic embeddings (build_embeddings.py / finalize_embeddings.py only)
+# all-MiniLM-L6-v2 is downloaded from HuggingFace Hub on first run;
+# rank.py is fully offline (reads pre-built .npy vectors).
+sentence-transformers>=3.2
+torch>=2.4             # CPU-only is sufficient; no GPU required
