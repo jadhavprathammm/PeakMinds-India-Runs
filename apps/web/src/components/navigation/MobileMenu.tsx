@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 
 interface NavLink {
   label: string;
@@ -109,7 +110,7 @@ export default function MobileMenu({
                 href={link.href}
                 variants={itemVariants}
                 onClick={onClose}
-                className="flex items-center px-3 py-3 rounded-md text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[120ms]"
+                className="flex items-center px-3 py-3 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-150"
               >
                 {link.label}
               </motion.a>
@@ -126,27 +127,20 @@ export default function MobileMenu({
               variants={itemVariants}
               className="flex flex-col gap-2 pb-2"
             >
-              <a
-                href="#hackathon"
-                onClick={onClose}
-                className="btn btn-md btn-ghost w-full justify-start"
-              >
-                Hackathon Submission
-              </a>
-              <a
-                href="#demo"
+              <Link
+                href="/architecture"
                 onClick={onClose}
                 className="btn btn-md btn-secondary w-full"
               >
-                Try Demo
-              </a>
-              <a
-                href="#get-started"
+                Architecture
+              </Link>
+              <Link
+                href="/top-100"
                 onClick={onClose}
                 className="btn btn-md btn-primary w-full"
               >
-                Get Started
-              </a>
+                View Rankings
+              </Link>
             </motion.div>
           </div>
         </motion.div>

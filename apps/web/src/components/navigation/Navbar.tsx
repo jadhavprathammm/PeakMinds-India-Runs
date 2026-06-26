@@ -2,12 +2,14 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import Link from "next/link";
 import MobileMenu from "./MobileMenu";
 
 const navLinks = [
-  { label: "Features", href: "#features" },
-  { label: "Demo", href: "#demo" },
-  { label: "About", href: "#about" },
+  { label: "Submission", href: "/#challenge" },
+  { label: "Engine", href: "/#engineering" },
+  { label: "Results", href: "/#top-100" },
+  { label: "Why It Wins", href: "/why-peakminds" },
 ];
 
 // Framer Motion v12 requires cubic-bezier easing as a typed 4-tuple.
@@ -59,7 +61,7 @@ export default function Navbar() {
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: easeOutQuart }}
       className={[
-        "fixed top-0 left-0 right-0 z-50 transition-[background-color,border-color,backdrop-filter] duration-300",
+        "fixed top-0 left-0 right-0 z-50 transition-[background-color,border-color,backdrop-filter] duration-[250ms]",
         scrolled
           ? "bg-surface/80 backdrop-blur-md border-b border-border"
           : "bg-transparent",
@@ -67,64 +69,52 @@ export default function Navbar() {
       aria-label="Main navigation"
     >
       <div className="container-page flex items-center justify-between h-16">
-        {/* ── Logo / Wordmark ─────────────────────────────────────────────── */}
-        <a
-          href="#"
-          onClick={(e) => {
-            e.preventDefault();
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }}
-          aria-label="PeakMinds — back to top"
-          className="group flex items-center gap-2 rounded-sm"
-        >
-          {/* Simple geometric mark — replace with SVG logo in a later sprint */}
-          <span
-            className="flex items-center justify-center w-7 h-7 rounded-md bg-accent text-[10px] font-bold text-accent-foreground tracking-tight select-none"
-            aria-hidden="true"
+        {/* ── Left: wordmark + nav links ──────────────────────────────────── */}
+        <div className="flex items-center gap-8">
+          <Link
+            href="/"
+            aria-label="PeakMinds — home"
+            onClick={() => { if (typeof window !== "undefined") window.scrollTo({ top: 0 }); }}
+            className="group inline-flex items-center rounded-xl transition-opacity duration-150 hover:opacity-75"
           >
-            PM
-          </span>
-          <span className="font-semibold text-[0.9375rem] tracking-tight text-foreground group-hover:text-foreground/80 transition-colors duration-[120ms]">
-            PeakMinds
-          </span>
-        </a>
+            <span className="font-bold text-[1.3125rem] tracking-[-0.02em] text-foreground">
+              PeakMinds
+            </span>
+          </Link>
 
-        {/* ── Desktop nav links ────────────────────────────────────────────── */}
-        <motion.ul
-          variants={linkContainerVariants}
-          initial="hidden"
-          animate="visible"
-          className="hidden md:flex items-center gap-1"
-          role="list"
-        >
-          {navLinks.map((link) => (
-            <motion.li key={link.href} variants={linkVariants}>
-              <a
-                href={link.href}
-                className="px-3 py-2 rounded-md text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[120ms]"
-              >
-                {link.label}
-              </a>
-            </motion.li>
-          ))}
-        </motion.ul>
+          <motion.ul
+            variants={linkContainerVariants}
+            initial="hidden"
+            animate="visible"
+            className="hidden md:flex items-center gap-1"
+            role="list"
+          >
+            {navLinks.map((link) => (
+              <motion.li key={link.href} variants={linkVariants}>
+                <a
+                  href={link.href}
+                  className="px-3 py-2 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-150"
+                >
+                  {link.label}
+                </a>
+              </motion.li>
+            ))}
+          </motion.ul>
+        </div>
 
-        {/* ── Desktop action buttons ───────────────────────────────────────── */}
+        {/* ── Right: action buttons ────────────────────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.38, duration: 0.4, ease: easeOutQuart }}
           className="hidden md:flex items-center gap-2"
         >
-          <a href="#hackathon" className="btn btn-sm btn-ghost">
-            Hackathon Submission
-          </a>
-          <a href="#demo" className="btn btn-sm btn-secondary">
-            Try Demo
-          </a>
-          <a href="#get-started" className="btn btn-sm btn-primary">
-            Get Started
-          </a>
+          <Link href="/architecture" className="btn btn-sm btn-secondary">
+            Architecture
+          </Link>
+          <Link href="/top-100" className="btn btn-sm btn-primary">
+            View Rankings
+          </Link>
         </motion.div>
 
         {/* ── Mobile hamburger ─────────────────────────────────────────────── */}
@@ -133,7 +123,7 @@ export default function Navbar() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.32, duration: 0.3 }}
-          className="md:hidden flex items-center justify-center w-10 h-10 rounded-md text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-[120ms]"
+          className="md:hidden flex items-center justify-center w-10 h-10 rounded-xl text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-150"
           onClick={() => setMenuOpen((v) => !v)}
           aria-expanded={menuOpen}
           aria-controls="mobile-menu"

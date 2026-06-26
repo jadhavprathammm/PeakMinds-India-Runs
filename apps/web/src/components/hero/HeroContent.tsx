@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import TrustBadges from "./TrustBadges";
+import Link from "next/link";
 import { easeOutQuart } from "@/lib/motion";
 
 // Parent orchestrator — staggers each block upward in sequence.
@@ -36,50 +36,43 @@ export default function HeroContent() {
       variants={container}
       initial="hidden"
       animate="visible"
-      className="max-w-xl"
+      className="max-w-4xl text-center"
     >
-      <motion.span
-        variants={fadeIn}
-        className="type-eyebrow flex items-center gap-2 mb-5"
+      <motion.h1
+        variants={slideUp}
+        className="text-5xl sm:text-6xl lg:text-[78px] font-bold tracking-[-0.03em] leading-[1.05] text-balance mb-8"
       >
-        <span
-          className="inline-block w-1.5 h-1.5 rounded-full bg-accent shrink-0"
-          aria-hidden="true"
-        />
-        Talent Intelligence Platform
-      </motion.span>
-
-      <motion.h1 variants={slideUp} className="type-hero font-bold mb-6">
-        Find Talent
+        Surface the Best Talent.
         <br />
-        <span className="text-gradient-accent">Beyond Keywords</span>
+        <span className="text-gradient-accent">Not the Loudest Keywords.</span>
       </motion.h1>
 
-      <motion.p variants={fadeIn} className="type-body max-w-md mb-9">
-        PeakMinds combines semantic understanding, engineered candidate
-        intelligence, and explainable ranking to help recruiters discover the
-        most relevant candidates—not just the ones with matching keywords.
+      <motion.p
+        variants={fadeIn}
+        className="mx-auto max-w-[660px] text-[20px] leading-[1.7] text-foreground/80 mb-12"
+      >
+        PeakMinds evaluates experience, skills, semantic relevance, and intent to
+        identify the strongest candidates from thousands of applications.
       </motion.p>
 
       <motion.div
         variants={fadeUpSlight}
-        className="flex flex-col sm:flex-row gap-3 mb-10"
+        className="flex flex-col gap-4 sm:flex-row sm:justify-center"
       >
-        <a href="#demo" className="btn btn-md btn-primary w-full sm:w-auto group">
-          Try Demo
-          <Arrow />
-        </a>
-        <a
-          href="#top-100"
-          className="btn btn-md btn-secondary w-full sm:w-auto group"
+        <Link
+          href="/top-100"
+          className="btn btn-md btn-primary group w-full px-8 transition-all duration-[250ms] hover:-translate-y-0.5 sm:w-auto"
         >
           View Top 100
           <Arrow />
-        </a>
-      </motion.div>
-
-      <motion.div variants={fadeUpSlight}>
-        <TrustBadges />
+        </Link>
+        <Link
+          href="/architecture"
+          className="btn btn-md btn-secondary group w-full px-8 transition-all duration-[250ms] hover:-translate-y-0.5 sm:w-auto"
+        >
+          View Architecture
+          <Arrow />
+        </Link>
       </motion.div>
     </motion.div>
   );
@@ -93,7 +86,7 @@ function Arrow() {
       viewBox="0 0 14 14"
       fill="none"
       aria-hidden="true"
-      className="transition-transform duration-200 group-hover:translate-x-0.5"
+      className="transition-transform duration-150 group-hover:translate-x-0.5"
     >
       <path
         d="M3 7h8M7.5 3.5L11 7l-3.5 3.5"
@@ -105,3 +98,4 @@ function Arrow() {
     </svg>
   );
 }
+

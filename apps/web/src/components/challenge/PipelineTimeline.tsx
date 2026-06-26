@@ -28,8 +28,7 @@ export default function PipelineTimeline() {
   return (
     <div>
       <div className="mb-[4.5rem] lg:mb-24 text-center">
-        <span className="type-eyebrow block mb-4">The Intelligence Pipeline</span>
-        <h3 className="type-section font-bold">How PeakMinds Thinks</h3>
+        <h3 className="text-5xl sm:text-6xl lg:text-[80px] font-bold tracking-[-0.03em] leading-[1.05] text-foreground text-balance">How PeakMinds Thinks</h3>
       </div>
 
       {/* ── Desktop: horizontal timeline ─────────────────────────────────────── */}
@@ -48,11 +47,11 @@ export default function PipelineTimeline() {
               {/* Connector to next node — sits behind the icon at its center */}
               {!isLast && (
                 <div
-                  className="absolute left-1/2 top-[42px] z-0 h-0.5 w-full overflow-hidden rounded-full bg-border transition-colors duration-300 group-hover/stage:bg-accent/25"
+                  className="absolute left-1/2 top-[42px] z-0 h-0.5 w-full overflow-hidden rounded-full bg-border transition-colors duration-[250ms] group-hover/stage:bg-accent/25"
                   aria-hidden="true"
                 >
                   <motion.div
-                    className="absolute inset-0 origin-left rounded-full bg-accent transition-shadow duration-300 group-hover/stage:shadow-[0_0_8px_rgba(255,77,141,0.5)]"
+                    className="absolute inset-0 origin-left rounded-full bg-accent transition-shadow duration-[250ms] group-hover/stage:shadow-[0_0_8px_rgba(255,77,141,0.5)]"
                     initial={{ scaleX: 0 }}
                     whileInView={{ scaleX: 1 }}
                     viewport={{ once: true, margin: "-80px" }}
@@ -70,7 +69,7 @@ export default function PipelineTimeline() {
               >
                 <div
                   className={[
-                    "flex h-[84px] w-[84px] items-center justify-center rounded-2xl border transition-all duration-300",
+                    "flex h-[84px] w-[84px] items-center justify-center rounded-xl border transition-all duration-[250ms]",
                     stage.highlight
                       ? "bg-accent border-accent text-accent-foreground shadow-accent"
                       : "bg-surface border-border text-accent group-hover/stage:border-accent/45 group-hover/stage:bg-surface-hover group-hover/stage:shadow-[0_0_24px_rgba(255,77,141,0.14)]",
@@ -121,7 +120,7 @@ export default function PipelineTimeline() {
               >
                 <span
                   className={[
-                    "relative z-10 flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border",
+                    "relative z-10 flex h-16 w-16 shrink-0 items-center justify-center rounded-xl border",
                     stage.highlight
                       ? "bg-accent border-accent text-accent-foreground shadow-accent"
                       : "bg-surface border-border text-accent",

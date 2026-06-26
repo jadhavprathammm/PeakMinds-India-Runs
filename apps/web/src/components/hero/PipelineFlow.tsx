@@ -37,7 +37,7 @@ const STEP = 0.34; // cadence between nodes
 export default function PipelineFlow() {
   return (
     <div
-      className="flex w-full max-w-[224px] flex-col items-stretch"
+      className="flex w-full max-w-[260px] flex-col items-stretch"
       aria-label="PeakMinds ranking pipeline"
     >
       {NODES.map((node, i) => {
@@ -53,7 +53,7 @@ export default function PipelineFlow() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay, duration: 0.5, ease: easeOutQuart }}
               className={[
-                "relative flex w-full items-center gap-2.5 rounded-xl border px-3 py-2 backdrop-blur-sm",
+                "relative flex w-full items-center gap-2.5 rounded-xl border px-3.5 py-2.5 backdrop-blur-sm",
                 node.result
                   ? "border-accent/40 bg-accent/[0.08] shadow-accent"
                   : "border-border bg-surface/60",
@@ -61,7 +61,7 @@ export default function PipelineFlow() {
             >
               {/* Icon box — lights up to accent as the node activates */}
               {node.result ? (
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-accent text-accent-foreground">
                   <Icon />
                 </span>
               ) : (
@@ -69,7 +69,7 @@ export default function PipelineFlow() {
                   initial={{ borderColor: "rgba(255,255,255,0.08)", color: "#71717a" }}
                   animate={{ borderColor: "rgba(255,77,141,0.32)", color: "#ff4d8d" }}
                   transition={{ delay: delay + 0.12, duration: 0.45 }}
-                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border"
                 >
                   <Icon />
                 </motion.span>
@@ -110,7 +110,7 @@ export default function PipelineFlow() {
             {/* Connector — fills with accent as the flow progresses */}
             {!isLast && (
               <div
-                className="relative my-0.5 h-4 w-px overflow-hidden bg-border"
+                className="relative my-1 h-8 w-px overflow-hidden bg-border"
                 aria-hidden="true"
               >
                 <motion.div

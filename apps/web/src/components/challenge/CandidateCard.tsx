@@ -69,16 +69,16 @@ export default function CandidateCard({ candidate, index }: Props) {
       viewport={{ once: true, margin: "-80px" }}
       transition={{ delay: index * 0.12, duration: 0.6, ease: easeOutQuart }}
       whileHover={{
-        y: -4,
-        boxShadow: "0 24px 60px rgba(0,0,0,0.55)",
-        transition: { type: "spring", stiffness: 260, damping: 26 },
+        y: -2,
+        boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+        transition: { duration: 0.25, ease: easeOutQuart },
       }}
       className={[
         "group relative overflow-hidden rounded-card border bg-surface/70 backdrop-blur-sm",
-        "px-6 py-7 sm:px-9 sm:py-8 cursor-default transition-colors duration-300",
+        "px-6 py-7 sm:px-9 sm:py-8 cursor-default transition-all duration-[250ms]",
         isTop
-          ? "border-accent/30 hover:border-accent/60"
-          : "border-border hover:border-white/20",
+          ? "border-accent/30 hover:border-accent/50"
+          : "border-border hover:border-border-strong",
       ].join(" ")}
     >
       {isTop && (
@@ -134,7 +134,7 @@ export default function CandidateCard({ candidate, index }: Props) {
 
         {/* Score — read last */}
         <div className="shrink-0 flex flex-col items-center gap-1.5">
-          <div className="transition-[filter] duration-300 [filter:drop-shadow(0_0_0_rgba(255,77,141,0))] group-hover:[filter:drop-shadow(0_0_10px_rgba(255,77,141,0.45))]">
+          <div className="transition-[filter] duration-[250ms] [filter:drop-shadow(0_0_0_rgba(255,77,141,0))] group-hover:[filter:drop-shadow(0_0_10px_rgba(255,77,141,0.45))]">
             <ScoreRing score={candidate.score} delay={0.2 + index * 0.12} />
           </div>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-subtle">

@@ -19,7 +19,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "PeakMinds — Talent Intelligence Platform",
+    default: "PeakMinds | Talent Intelligence Platform for Recruiters",
     template: "%s · PeakMinds",
   },
   description:
