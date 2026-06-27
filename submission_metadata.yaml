@@ -1,0 +1,62 @@
+# Redrob / India Runs AI Hiring Challenge — submission metadata
+# Mirrors the portal metadata (spec §10.2 / §10.3).
+#
+# Fields marked TODO_BEFORE_SUBMIT are personal/team details that must be filled
+# by the team before uploading — they are intentionally NOT auto-populated.
+
+team:
+  name: TODO_BEFORE_SUBMIT          # your registered team / participant name (also the CSV filename stem)
+  members:
+    - name: Pratham Jadhav
+      email: rutzpratham0505@gmail.com
+    # - name: TODO_BEFORE_SUBMIT
+    #   email: TODO_BEFORE_SUBMIT
+
+primary_contact:
+  name: Pratham Jadhav
+  email: rutzpratham0505@gmail.com
+  phone: TODO_BEFORE_SUBMIT         # required by the portal for top-N communication
+
+repository:
+  github_url: https://github.com/jadhavprathammm/PeakMinds-India-Runs
+  reproduce_command: "python services/ranking-engine/rank.py"   # produces submissions/team_redrob.csv
+
+sandbox:
+  # Hosted demo that runs the ranking engine on a <=100-candidate sample (spec §10.5).
+  # Deploy services/ranking-engine/sandbox/app.py to Streamlit Cloud or a HF Space,
+  # then paste the public URL here.
+  url: TODO_BEFORE_SUBMIT
+  app_file: services/ranking-engine/sandbox/app.py
+  notes: "Streamlit app; accepts upload or bundled 100-candidate sample; CPU; produces ranked CSV."
+
+ai_tools_declared:
+  - Claude            # used as a development assistant (engineering, docs, frontend)
+  # add ChatGPT / Copilot / Cursor / Gemini / Other / None as applicable
+
+compute_environment:
+  summary: "Windows 11, Python 3.13, CPU-only (no GPU). 16 GB RAM."   # confirm RAM before submit
+  ranking_runtime: "rank.py completes in well under the 5-minute budget on CPU."
+  precompute_note: >-
+    Embedding generation (all-MiniLM-L6-v2 over 100k profiles) is a one-time
+    offline precompute (~30 min CPU) and is NOT part of the timed ranking step.
+    The ranking step reads precomputed features and runs within the 5-minute budget.
+
+submission:
+  csv: services/ranking-engine/submissions/team_redrob.csv
+  columns: [candidate_id, rank, score, reasoning]
+  rows: 100
+
+methodology_summary: >-
+  PeakMinds ranks ~100,000 candidates for a Senior AI Engineer (retrieval/ranking)
+  role using a hybrid, fully offline pipeline. Each profile is reduced to 92
+  deterministic signals (role class, applied-ML years, retrieval/eval/deployment
+  evidence, product-vs-services history, pre-LLM depth, location, availability,
+  trust) plus a semantic relevance score from all-MiniLM-L6-v2 (384-d) measured
+  against a JD-intent query. A 7-pillar weighted fit score (role .42, experience
+  .18, production .12, pre-LLM .08, location .08, tenure .07, trust .05) is
+  multiplied by an availability modifier; five hard gates penalize and tier-cap
+  off-profile candidates, and honeypot/structural-twin profiles are excluded.
+  Every Top-100 entry carries a grounded, rule-based reasoning string (no LLM,
+  no hallucination) with its strongest signals and one honest concern. The
+  ranking step is deterministic, CPU-only, and reproducible from the committed
+  feature artifacts via a single command.

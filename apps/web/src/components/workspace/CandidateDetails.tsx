@@ -57,12 +57,18 @@ interface Props {
   candidate: WorkspaceCandidate;
 }
 
+// Real model-score band: Tier-5 floor (0.80) → availability-boosted max (1.10).
+const S_FLOOR = 0.8;
+const S_CEIL = 1.1;
+
 export default function CandidateDetails({ candidate }: Props) {
-  const score = useCountUp(candidate.score);
-  const offset = RING_C * (1 - candidate.score / 100);
+  const fill = Math.min(Math.max((candidate.score - S_FLOOR) / (S_CEIL - S_FLOOR), 0), 1);
+  const score = useCountUp(Math.round(candidate.score * 100)); // animate to score×100, render as .toFixed(2)
+  const offset = RING_C * (1 - fill);
 
   const positives = candidate.ledger.filter((r) => r.weight >= 0);
   const risks = candidate.ledger.filter((r) => r.weight < 0);
+  const maxImpact = Math.max(...positives.map((r) => r.weight), 1);
 
   return (
     <motion.div
@@ -108,7 +114,7 @@ export default function CandidateDetails({ candidate }: Props) {
               viewBox="0 0 104 104"
               fill="none"
               role="img"
-              aria-label={`Overall match ${candidate.score} out of 100`}
+              aria-label={`Model score ${candidate.score.toFixed(2)}`}
               className="relative [filter:drop-shadow(0_0_12px_rgba(255,77,141,0.32))]"
             >
               <defs>
@@ -140,10 +146,10 @@ export default function CandidateDetails({ candidate }: Props) {
             </svg>
             <div className="absolute inset-0 flex flex-col items-center justify-center">
               <span className="text-3xl font-bold tracking-tight text-gradient-accent tabular-nums">
-                {score}
+                {(score / 100).toFixed(2)}
               </span>
               <span className="text-[9px] font-semibold uppercase tracking-wider text-subtle">
-                Match
+                Score
               </span>
             </div>
           </div>
@@ -152,7 +158,7 @@ export default function CandidateDetails({ candidate }: Props) {
 
       <div className="my-5 border-t border-border" />
 
-      {/* ── 2. Score Impact (positive contributions) ───────────────────────── */}
+      {/* ── 2. Score Impact (real per-pillar point contributions) ──────────── */}
       <motion.div {...sectionVariants(0.16)}>
         <SectionLabel>Score Impact</SectionLabel>
         <div className="flex flex-col gap-2">
@@ -165,7 +171,7 @@ export default function CandidateDetails({ candidate }: Props) {
                 <motion.div
                   className="absolute inset-y-0 left-0 rounded-full bg-[linear-gradient(90deg,#ff4d8d,#b06bff)]"
                   initial={{ width: 0 }}
-                  animate={{ width: `${Math.min(row.weight / 14, 1) * 100}%` }}
+                  animate={{ width: `${Math.min(row.weight / maxImpact, 1) * 100}%` }}
                   transition={{ delay: 0.2, duration: 0.6, ease: easeOutQuart }}
                 />
               </div>
@@ -213,18 +219,15 @@ export default function CandidateDetails({ candidate }: Props) {
         <>
           <div className="my-5 border-t border-border" />
 
-          {/* ── 6. Risk Factors ────────────────────────────────────────────── */}
+          {/* ── 6. Concern (the engine's one honest caveat — not a scored penalty) ── */}
           <motion.div {...sectionVariants(0.5)}>
-            <SectionLabel>Risk Factors</SectionLabel>
+            <SectionLabel>Concern</SectionLabel>
             <div className="flex flex-col gap-2">
               {risks.map((row) => (
-                <div key={row.label} className="flex items-center gap-2.5">
+                <div key={row.label} className="flex items-start gap-2.5">
                   <WarnIcon />
-                  <span className="text-[14px] text-foreground/75">
+                  <span className="text-[14px] leading-[1.5] text-foreground/75">
                     {row.label}
-                  </span>
-                  <span className="ml-auto text-[13px] font-semibold tabular-nums text-subtle">
-                    −{Math.abs(row.weight)}
                   </span>
                 </div>
               ))}

@@ -210,13 +210,13 @@ function SignalBars() {
   );
 }
 
-// ── Scene 4: Weighted scoring ledger ─────────────────────────────────────────
+// ── Scene 4: Weighted scoring ledger (real pillar weights ×100 from src/scoring.py) ──
 const LEDGER = [
-  { label: "Semantic Match", weight: "+14", positive: true },
-  { label: "Production Ranking", weight: "+9", positive: true },
-  { label: "Evaluation Fluency", weight: "+7", positive: true },
-  { label: "Pre-LLM ML Depth", weight: "+5", positive: true },
-  { label: "Notice Period", weight: "−2", positive: false },
+  { label: "Role Fit", weight: "+42", positive: true },
+  { label: "Experience", weight: "+18", positive: true },
+  { label: "Production Depth", weight: "+12", positive: true },
+  { label: "Pre-LLM ML Depth", weight: "+8", positive: true },
+  { label: "Location & Availability", weight: "+8", positive: true },
 ];
 
 function ScoringLedger() {
@@ -253,22 +253,24 @@ function ScoringLedger() {
   );
 }
 
-// ── Scene 5: Final score ─────────────────────────────────────────────────────
-const SCORE = 98;
+// ── Scene 5: Final score (the real #1 candidate's model score, S = S_fit × avail) ──
+const SCORE = 1.01; // CAND_0046525, rank 1 in team_redrob.csv (1.0106)
+const S_FLOOR = 0.8; // Tier-5 floor
+const S_CEIL = 1.1; // availability-boosted ceiling
 const RING_R = 58;
 const RING_C = 2 * Math.PI * RING_R;
 
 function ScoreReveal() {
-  const { ref, val } = useCountUp(SCORE);
+  const { ref, val } = useCountUp(Math.round(SCORE * 100)); // animate to 101, render /100
   const prefersReduced = useReducedMotion();
-  const offset = RING_C * (1 - SCORE / 100);
+  const offset = RING_C * (1 - Math.min(Math.max((SCORE - S_FLOOR) / (S_CEIL - S_FLOOR), 0), 1));
 
   return (
     <div className="flex flex-col items-center">
       <div
         className="relative"
         role="img"
-        aria-label={`Final match score ${SCORE} out of 100`}
+        aria-label={`Top candidate model score ${SCORE.toFixed(2)}`}
       >
         {/* Subtle periodic halo pulse */}
         {!prefersReduced && (
@@ -324,10 +326,10 @@ function ScoreReveal() {
             ref={ref}
             className="text-5xl font-bold tracking-tight text-gradient-accent tabular-nums"
           >
-            {val}
+            {(val / 100).toFixed(2)}
           </span>
           <span className="mt-0.5 text-[11px] font-semibold uppercase tracking-wider text-subtle">
-            / 100
+            model score
           </span>
         </div>
       </div>
@@ -378,7 +380,7 @@ export default function EngineeringStory() {
 
         <Scene
           step="03 · Signals"
-          caption="Meaning is engineered into measurable signals — 98 of them, per candidate."
+          caption="Meaning is engineered into measurable signals — 93 of them, per candidate."
         >
           <SignalBars />
         </Scene>

@@ -2,9 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { TOP_100, type RankedEntry, type Tier } from "@/lib/top100data";
+import { TOP_100, FINDINGS, SCORE_RANGE, type RankedEntry } from "@/lib/top100data";
 
-const FILTERS = ["All", "NLP", "Recommendation", "Search", "Senior (7+yrs)", "Top Tier"] as const;
+const FILTERS = ["All", "NLP", "Recommendation", "Search", "Senior (7+yrs)"] as const;
 type Filter = (typeof FILTERS)[number];
 
 function matchesFilter(c: RankedEntry, f: Filter): boolean {
@@ -13,26 +13,21 @@ function matchesFilter(c: RankedEntry, f: Filter): boolean {
   if (f === "Recommendation") return c.role.toLowerCase().includes("recommendation");
   if (f === "Search") return c.role.toLowerCase().includes("search");
   if (f === "Senior (7+yrs)") return c.experience >= 7;
-  if (f === "Top Tier") return c.tier === "Top";
   return true;
 }
 
+// Real model scores span SCORE_RANGE (≈0.86–1.01). Colour by position in that band.
 function scoreBadge(score: number) {
-  if (score >= 90) return "bg-accent/15 text-accent border border-accent/30";
-  if (score >= 80) return "bg-purple-500/15 text-purple-300 border border-purple-500/30";
+  if (score >= 0.95) return "bg-accent/15 text-accent border border-accent/30";
+  if (score >= 0.90) return "bg-purple-500/15 text-purple-300 border border-purple-500/30";
   return "bg-surface-elevated text-muted border border-border";
 }
 
-function tierBadge(tier: Tier) {
-  if (tier === "Top") return "bg-accent/12 text-accent border border-accent/25";
-  if (tier === "Strong") return "bg-purple-500/12 text-purple-300 border border-purple-400/25";
-  return "bg-surface-elevated text-faint border border-border";
-}
-
 function downloadCSV() {
-  const header = "Rank,Candidate ID,Role,Company,Experience (yrs),Match Score,Skills\n";
+  // Mirrors the real submission: candidate_id, rank, score (model output).
+  const header = "candidate_id,rank,score,role,company,experience_yrs,tier,skills\n";
   const rows = TOP_100.map((c) =>
-    `${c.rank},"${c.id}","${c.role}","${c.company}",${c.experience},${c.score},"${c.skills.join("; ")}"`
+    `"${c.id}",${c.rank},${c.score},"${c.role}","${c.company}",${c.experience},${c.tier},"${c.skills.join("; ")}"`
   ).join("\n");
   const blob = new Blob([header + rows], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -46,18 +41,10 @@ function downloadCSV() {
 }
 
 const HERO_STATS = [
-  { label: "Candidates Evaluated", value: "10,000+" },
+  { label: "Candidates Evaluated", value: "100,000" },
   { label: "Finalists Selected",   value: "100" },
-  { label: "Features Per Candidate", value: "96" },
+  { label: "Signals Per Candidate", value: "93" },
   { label: "Embedding Dimensions",   value: "384" },
-];
-
-const FINDINGS = [
-  "72% of Top 100 candidates showed production deployment evidence.",
-  "Most selected candidates had 5+ years of applied ML experience.",
-  "Semantic matching consistently outperformed keyword-only matching.",
-  "Trust signals correlated strongly with top-tier rankings.",
-  "Candidates with both role alignment and deployment history ranked highest.",
 ];
 
 export default function Top100Page() {
@@ -108,7 +95,7 @@ export default function Top100Page() {
             Top 100 Candidates
           </h1>
           <p className="mt-5 max-w-[620px] text-[18px] leading-[1.7] text-foreground/70">
-            Generated from 10,000 candidate profiles using the PeakMinds Talent Intelligence Engine.{" "}
+            Generated from 100,000 candidate profiles using the PeakMinds Talent Intelligence Engine.{" "}
             <span className="text-foreground/40">India Runs AI Hiring Challenge 2026</span>
           </p>
 
@@ -188,7 +175,7 @@ export default function Top100Page() {
                 <Th>Role</Th>
                 <Th className="w-36">Company</Th>
                 <Th className="w-20 text-center">Exp.</Th>
-                <Th className="w-24 text-center">Score</Th>
+                <Th className="w-28 text-center">Model Score</Th>
                 <Th className="w-24 text-center">Tier</Th>
                 <Th>Skills</Th>
               </tr>
@@ -264,19 +251,14 @@ export default function Top100Page() {
                             scoreBadge(c.score),
                           ].join(" ")}
                         >
-                          {c.score}
+                          {c.score.toFixed(3)}
                         </span>
                       </td>
 
-                      {/* Tier */}
+                      {/* Tier (every finalist clears the Tier-5 bar, S ≥ 0.80) */}
                       <td className="px-4 py-4 text-center">
-                        <span
-                          className={[
-                            "inline-flex items-center justify-center rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider",
-                            tierBadge(c.tier),
-                          ].join(" ")}
-                        >
-                          {c.tier}
+                        <span className="inline-flex items-center justify-center rounded-full border border-accent/25 bg-accent/12 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-accent">
+                          Tier {c.tier}
                         </span>
                       </td>
 
@@ -303,8 +285,10 @@ export default function Top100Page() {
 
         {/* Table footer */}
         <p className="mt-5 text-center text-[13px] text-faint">
-          Showing {results.length} of {TOP_100.length} candidates ·{" "}
-          Ranked by PeakMinds Talent Intelligence Engine
+          Showing {results.length} of {TOP_100.length} candidates · Model scores range{" "}
+          {SCORE_RANGE.min.toFixed(2)}–{SCORE_RANGE.max.toFixed(2)} · All 100 clear the Tier-5 bar
+          (S&nbsp;≥&nbsp;0.80) · Identical to{" "}
+          <span className="font-mono text-subtle">team_redrob.csv</span>
         </p>
       </div>
 
@@ -315,19 +299,23 @@ export default function Top100Page() {
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-faint mb-2">
               Engine Insights
             </p>
-            <h2 className="text-[26px] font-bold tracking-tight text-foreground mb-8">
+            <h2 className="text-[26px] font-bold tracking-tight text-foreground mb-2">
               PeakMinds Findings
             </h2>
+            <p className="text-[14px] text-muted mb-8">
+              Computed directly from the 100 selected candidates — every figure is reproducible
+              from the feature data.
+            </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {FINDINGS.map((f, i) => (
                 <div
                   key={i}
-                  className="rounded-card border border-border bg-surface/50 p-5 flex gap-3 items-start"
+                  className="rounded-card border border-border bg-surface/50 p-5"
                 >
-                  <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-bold tabular-nums text-accent">
-                    {i + 1}
-                  </span>
-                  <p className="text-[14px] leading-[1.65] text-foreground/80">{f}</p>
+                  <p className="text-[28px] font-bold tracking-tight text-gradient-accent leading-none">
+                    {f.stat}
+                  </p>
+                  <p className="mt-2 text-[13.5px] leading-[1.55] text-foreground/75">{f.label}</p>
                 </div>
               ))}
             </div>

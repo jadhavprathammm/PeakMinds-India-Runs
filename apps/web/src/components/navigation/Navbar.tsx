@@ -3,16 +3,16 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import MobileMenu from "./MobileMenu";
 
+// Page-level nav links (anchors removed — only real routes remain)
 const navLinks = [
-  { label: "Submission", href: "/#challenge" },
-  { label: "Engine", href: "/#engineering" },
-  { label: "Results", href: "/#top-100" },
-  { label: "Why It Wins", href: "/why-peakminds" },
+  { label: "Why It Wins",      href: "/why-peakminds" },
+  { label: "Candidate Review", href: "/candidate-review" },
+  { label: "Recruiter Upload", href: "/recruiter-upload" },
 ];
 
-// Framer Motion v12 requires cubic-bezier easing as a typed 4-tuple.
 const easeOutQuart: [number, number, number, number] = [0.25, 1, 0.5, 1];
 
 const linkContainerVariants = {
@@ -32,25 +32,25 @@ const linkVariants = {
   },
 };
 
+function isActive(pathname: string, href: string): boolean {
+  return pathname === href;
+}
+
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const hamburgerRef = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
 
-  // Scroll detection — glass effect activates after 20px
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
-    // Set initial state in case page loads scrolled
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  // Close mobile menu when resizing to desktop width
   useEffect(() => {
-    const onResize = () => {
-      if (window.innerWidth >= 768) setMenuOpen(false);
-    };
+    const onResize = () => { if (window.innerWidth >= 768) setMenuOpen(false); };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -69,7 +69,8 @@ export default function Navbar() {
       aria-label="Main navigation"
     >
       <div className="container-page flex items-center justify-between h-16">
-        {/* ── Left: wordmark + nav links ──────────────────────────────────── */}
+
+        {/* ── Left: logo + nav links ────────────────────────────────────── */}
         <div className="flex items-center gap-8">
           <Link
             href="/"
@@ -89,20 +90,29 @@ export default function Navbar() {
             className="hidden md:flex items-center gap-1"
             role="list"
           >
-            {navLinks.map((link) => (
-              <motion.li key={link.href} variants={linkVariants}>
-                <a
-                  href={link.href}
-                  className="px-3 py-2 rounded-xl text-sm font-medium text-muted hover:text-foreground hover:bg-surface-hover transition-colors duration-150"
-                >
-                  {link.label}
-                </a>
-              </motion.li>
-            ))}
+            {navLinks.map((link) => {
+              const active = isActive(pathname, link.href);
+              return (
+                <motion.li key={link.href} variants={linkVariants}>
+                  <Link
+                    href={link.href}
+                    aria-current={active ? "page" : undefined}
+                    className={[
+                      "px-3 py-2 rounded-xl text-sm font-medium transition-colors duration-150",
+                      active
+                        ? "text-foreground bg-surface-elevated border border-border"
+                        : "text-muted hover:text-foreground hover:bg-surface-hover",
+                    ].join(" ")}
+                  >
+                    {link.label}
+                  </Link>
+                </motion.li>
+              );
+            })}
           </motion.ul>
         </div>
 
-        {/* ── Right: action buttons ────────────────────────────────────────── */}
+        {/* ── Right: action buttons (unchanged) ────────────────────────── */}
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
@@ -117,7 +127,7 @@ export default function Navbar() {
           </Link>
         </motion.div>
 
-        {/* ── Mobile hamburger ─────────────────────────────────────────────── */}
+        {/* ── Mobile hamburger ─────────────────────────────────────────── */}
         <motion.button
           ref={hamburgerRef}
           initial={{ opacity: 0 }}
@@ -131,23 +141,11 @@ export default function Navbar() {
         >
           <AnimatePresence mode="wait" initial={false}>
             {menuOpen ? (
-              <motion.span
-                key="close"
-                initial={{ rotate: -45, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: 45, opacity: 0 }}
-                transition={{ duration: 0.14, ease: easeOutQuart }}
-              >
+              <motion.span key="close" initial={{ rotate: -45, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 45, opacity: 0 }} transition={{ duration: 0.14, ease: easeOutQuart }}>
                 <CloseIcon />
               </motion.span>
             ) : (
-              <motion.span
-                key="open"
-                initial={{ rotate: 45, opacity: 0 }}
-                animate={{ rotate: 0, opacity: 1 }}
-                exit={{ rotate: -45, opacity: 0 }}
-                transition={{ duration: 0.14, ease: easeOutQuart }}
-              >
+              <motion.span key="open" initial={{ rotate: 45, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: -45, opacity: 0 }} transition={{ duration: 0.14, ease: easeOutQuart }}>
                 <HamburgerIcon />
               </motion.span>
             )}
@@ -155,7 +153,6 @@ export default function Navbar() {
         </motion.button>
       </div>
 
-      {/* ── Mobile menu panel ─────────────────────────────────────────────── */}
       <MobileMenu
         isOpen={menuOpen}
         onClose={() => setMenuOpen(false)}
@@ -168,49 +165,18 @@ export default function Navbar() {
 
 function HamburgerIcon() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden="true"
-    >
-      <rect x="2" y="4" width="14" height="1.5" rx="0.75" fill="currentColor" />
-      <rect
-        x="2"
-        y="8.25"
-        width="14"
-        height="1.5"
-        rx="0.75"
-        fill="currentColor"
-      />
-      <rect
-        x="2"
-        y="12.5"
-        width="14"
-        height="1.5"
-        rx="0.75"
-        fill="currentColor"
-      />
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <rect x="2" y="4"    width="14" height="1.5" rx="0.75" fill="currentColor" />
+      <rect x="2" y="8.25" width="14" height="1.5" rx="0.75" fill="currentColor" />
+      <rect x="2" y="12.5" width="14" height="1.5" rx="0.75" fill="currentColor" />
     </svg>
   );
 }
 
 function CloseIcon() {
   return (
-    <svg
-      width="18"
-      height="18"
-      viewBox="0 0 18 18"
-      fill="none"
-      aria-hidden="true"
-    >
-      <path
-        d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-      />
+    <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
+      <path d="M4.5 4.5L13.5 13.5M13.5 4.5L4.5 13.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }

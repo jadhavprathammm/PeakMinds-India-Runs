@@ -24,65 +24,51 @@ runs well under the 5-minute compute budget on CPU.
 
 ## Directory Layout
 
-```
-Codes/                          ← submission root (this repo)
-├── src/
-│   ├── __init__.py
-│   ├── features.py             ← per-candidate feature extractor (deterministic)
-│   ├── taxonomies.py           ← title / company / location classifiers + KW dictionaries
-│   ├── jd_intent.py            ← JD semantic query + positive exemplars
-│   ├── scoring.py              ← vectorised S scoring function
-│   ├── evaluation.py           ← NDCG / MAP / P@k / composite metric
-│   └── reasoning.py            ← grounded reasoning string generator
-├── artifacts/                  ← precomputed data products (written by build_* scripts)
-│   ├── candidate_features.parquet
-│   ├── reasoning_facts.parquet
-│   ├── emb_profile.npy         ← (384-d, float32, ~147 MB)
-│   ├── emb_career.npy          ← (384-d, float32, ~147 MB)
-│   ├── jd_vec.npy
-│   └── emb_ids.csv
-├── submissions/
-│   └── team_redrob.csv         ← final output
-├── analysis_outputs/           ← EDA charts and CSVs (not on ranking path)
-├── build_features.py           ← Step 1
-├── build_embeddings.py         ← Step 2a  (first run; downloads model)
-├── finalize_embeddings.py      ← Step 2b  (re-run without re-encoding)
-├── fix_twin_flag.py            ← Step 3
-├── build_reasoning_facts.py    ← Step 4
-├── rank.py                     ← Step 5  (the only step needed for re-scoring)
-├── relevance_rubric.md         ← rubric + tier definitions
-├── ranking_architecture.md     ← design rationale
-├── requirements.txt
-│
-│   ── EDA / research (not on ranking critical path) ──
-├── _featurize_tmp.py           ← legacy EDA feature builder (superseded by src/features.py)
-├── _mine_vocab.py              ← vocab/distribution mining
-├── _mine_evidence.py           ← evidence keyword + honeypot mining
-├── analyze_candidates.py       ← EDA Stage A: stats, correlations
-├── analyze_candidates_b.py     ← EDA Stage B: PCA, top indicators, charts
-├── quality_score.py            ← EDA Stage C: pillar-based quality score
-├── calibrate_thresholds.py     ← tier-cut calibration against S distribution
-├── simulate_ranking.py         ← ablation study on a silver (synthetic) gold set
-├── build_gold_set.py           ← human-labeling instrument (outputs gold_set_to_label.csv)
-└── Working with JSON.ipynb     ← exploratory notebook
-```
-
-`Datasets/` is a sibling of `Codes/` (not inside it):
+This engine lives at `services/ranking-engine/` inside the PeakMinds monorepo.
+Raw data lives at the repo's `data/` directory (not inside this folder).
 
 ```
-Data Challenge India Runs/
-├── Codes/          ← this repo
-└── Datasets/
-    ├── candidates.jsonl
-    ├── candidate_features.csv   ← legacy CSV (EDA only; not used by ranker)
-    └── ...
+PeakMinds/                              ← monorepo root
+├── data/
+│   └── candidates.jsonl                ← raw input (git-ignored; place here or set CANDIDATES_PATH)
+├── submission_metadata.yaml            ← portal metadata (spec §10.3)
+├── apps/web/                           ← Next.js site (homepage, /architecture, /top-100, /why-peakminds)
+└── services/ranking-engine/            ← this engine
+    ├── src/
+    │   ├── features.py                 ← per-candidate feature extractor (deterministic)
+    │   ├── taxonomies.py               ← title / company / location classifiers + KW dictionaries
+    │   ├── jd_intent.py                ← JD semantic query + positive exemplars
+    │   ├── scoring.py                  ← vectorised S scoring function
+    │   ├── evaluation.py               ← NDCG / MAP / P@k / composite metric
+    │   └── reasoning.py                ← grounded reasoning string generator
+    ├── artifacts/
+    │   ├── candidate_features.parquet  ← COMMITTED (5.5 MB) — all rank.py needs
+    │   ├── reasoning_facts.parquet     ← COMMITTED (1.8 MB)
+    │   ├── emb_profile.npy             ← git-ignored (384-d, ~147 MB; regenerable)
+    │   ├── emb_career.npy              ← git-ignored (384-d, ~147 MB; regenerable)
+    │   ├── jd_vec.npy · emb_ids.csv · feature_schema.csv
+    ├── submissions/
+    │   └── team_redrob.csv             ← final output (committed)
+    ├── sandbox/                        ← runnable demo (Streamlit) — see sandbox/README.md
+    │   ├── app.py · pipeline.py · sample_candidates.jsonl · requirements.txt
+    ├── build_features.py               ← Step 1
+    ├── build_embeddings.py             ← Step 2a  (first run; downloads model)
+    ├── finalize_embeddings.py          ← Step 2b  (re-run without re-encoding)
+    ├── fix_twin_flag.py                ← Step 3
+    ├── build_reasoning_facts.py        ← Step 4
+    ├── rank.py                         ← Step 5  (the only step needed to reproduce the CSV)
+    ├── export_web_data.py              ← regenerates the website's data from the real outputs
+    ├── requirements.txt
+    └── experiments/                    ← EDA / research (NOT on the ranking critical path)
+        ├── analyze_candidates*.py · quality_score.py · build_gold_set.py
+        └── _featurize_tmp.py · _mine_vocab.py · _mine_evidence.py
 ```
 
-> **Note:** `Datasets/` is currently referenced by absolute Windows path
-> (`D:\Data Challenge India Runs\Datasets\`). If running on a different machine,
-> update `DEF_CAND` in `build_features.py` / `build_embeddings.py` /
-> `finalize_embeddings.py` / `fix_twin_flag.py` / `build_reasoning_facts.py`
-> and `DEF_OUT` / `ART` in those same files before rebuilding.
+> **Reproduce from a clean clone:** `candidate_features.parquet` and
+> `reasoning_facts.parquet` are committed, so `python rank.py` reproduces
+> `submissions/team_redrob.csv` with no manual data placement. Only the full
+> rebuild (Steps 1–4) needs `data/candidates.jsonl`; point to it with the
+> `CANDIDATES_PATH` environment variable if it is not at the default `data/` path.
 
 ---
 
@@ -135,7 +121,8 @@ Honeypots and structural twins are set to `S = -1` and excluded from the top 100
 **Output:** `artifacts/candidate_features.parquet`
 
 Processes `candidates.jsonl` line-by-line (pure Python, no RAM spike) and
-extracts ~70 deterministic features per candidate, grouped into eight pillars:
+extracts 92 deterministic features per candidate (semantic_fit is added in Step 2
+for 93 signals total), grouped into eight pillars:
 
 | Pillar | Key features |
 |--------|-------------|
@@ -340,8 +327,8 @@ Output columns: `candidate_id`, `rank` (1–100), `score` (6 d.p.), `reasoning`.
 | `artifacts/candidate_features_full.csv.gz` | `build_features.py` | _(none)_ | csv.gz fallback written if pyarrow is absent; redundant when parquet exists |
 | `artifacts/feature_schema.csv` | `build_features.py` (_sample_) | _(reference)_ | First-50 rows for schema inspection |
 | `submissions/team_redrob.csv` | `rank.py` | _(grader)_ | Final deliverable |
-| `Datasets/candidate_features.csv` | `_featurize_tmp.py` | `analyze_candidates.py`, `analyze_candidates_b.py`, `quality_score.py` | **EDA only** — different schema from parquet; not on ranking path |
-| `analysis_outputs/*.png, *.csv` | `analyze_candidates*.py`, `quality_score.py` | _(reference)_ | EDA charts and summary tables |
+| `data/eda/candidate_features.csv` | `_featurize_tmp.py` | `experiments/analyze_candidates*.py`, `quality_score.py` | **EDA only** — different schema from parquet; not on ranking path |
+| `experiments/outputs/*.png, *.csv` | `experiments/analyze_candidates*.py`, `quality_score.py` | _(reference)_ | EDA charts and summary tables |
 
 ---
 
@@ -349,14 +336,17 @@ Output columns: `candidate_id`, `rank` (1–100), `score` (6 d.p.), `reasoning`.
 
 ### Prerequisites
 
+Only required for a **full rebuild** (Steps 1–4). To merely reproduce the
+submission CSV, skip to Step 5 — the parquet artifacts are committed.
+
 ```
-Data Challenge India Runs/
-└── Datasets/
-    └── candidates.jsonl    ← required
+PeakMinds/
+└── data/
+    └── candidates.jsonl    ← required for a rebuild
 ```
 
-Verify the hardcoded `DEF_CAND` path in `build_features.py` matches your
-local location before running Step 1.
+The scripts default to `../../data/candidates.jsonl`. If your data is elsewhere,
+set `CANDIDATES_PATH=/path/to/candidates.jsonl` before running Step 1.
 
 ---
 
@@ -366,7 +356,7 @@ local location before running Step 1.
 python build_features.py
 ```
 
-Streams `candidates.jsonl`, extracts ~70 deterministic features per candidate,
+Streams `candidates.jsonl`, extracts 92 deterministic features per candidate,
 writes `artifacts/candidate_features.parquet`.
 
 Optional: limit to N candidates for testing:
@@ -462,8 +452,9 @@ This is the fast path (< 30 s end-to-end).
 
 ### EDA / Validation scripts (optional, development-time)
 
-These are not on the ranking critical path and can be run in any order
-after Step 1 builds `Datasets/candidate_features.csv` (via `_featurize_tmp.py`):
+These are not on the ranking critical path and live under `experiments/`. They
+can be run in any order after Step 1 builds `data/eda/candidate_features.csv`
+(via `experiments/_featurize_tmp.py`):
 
 ```bash
 python _mine_vocab.py          # vocabulary/distribution analysis

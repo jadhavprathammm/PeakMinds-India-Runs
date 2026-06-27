@@ -1,0 +1,39 @@
+# CandidateProfile V2
+
+Status: Frozen
+
+Sections:
+
+1. Identity
+2. Skills
+3. Experience
+4. Education
+5. Evidence
+6. Quality Signals
+7. Recruiter Signals
+8. Career Preferences
+9. Projects
+10. Communication Signals
+11. Risk Signals
+12. Archetype
+13. Multi-Role Family
+14. Differentiation# CandidateProfile V2
+
+Status: Frozen
+
+Sections:
+
+1. Identity
+2. Skills
+3. Experience
+4. Education
+5. Evidence
+6. Quality Signals
+7. Recruiter Signals
+8. Career Preferences
+9. Projects
+10. Communication Signals
+11. Risk Signals
+12. Archetype
+13. Multi-Role Family
+14. Differentiation

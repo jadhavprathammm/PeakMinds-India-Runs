@@ -13,9 +13,15 @@ interface Props {
 
 const R = 32;
 const C = 2 * Math.PI * R;
+// Real model score band: Tier-5 floor (0.80) → availability-boosted max (1.10).
+// Ring fill = the candidate's position within that band; centre shows the real score.
+const S_FLOOR = 0.8;
+const S_CEIL = 1.1;
 
 function ScoreRing({ score, delay }: { score: number; delay: number }) {
-  const offset = C * (1 - score / 100);
+  const fill = Math.min(Math.max((score - S_FLOOR) / (S_CEIL - S_FLOOR), 0), 1);
+  const offset = C * (1 - fill);
+  const gid = `ccRing${Math.round(score * 1000)}`;
   return (
     <svg
       width="69"
@@ -23,11 +29,11 @@ function ScoreRing({ score, delay }: { score: number; delay: number }) {
       viewBox="0 0 84 84"
       fill="none"
       role="img"
-      aria-label={`Match score ${score} out of 100`}
+      aria-label={`Model score ${score.toFixed(2)}`}
       className="shrink-0"
     >
       <defs>
-        <linearGradient id={`ccRing${score}`} x1="0" y1="0" x2="1" y2="1">
+        <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0%" stopColor="var(--color-accent)" />
           <stop offset="100%" stopColor="#b06bff" />
         </linearGradient>
@@ -37,7 +43,7 @@ function ScoreRing({ score, delay }: { score: number; delay: number }) {
         cx="42"
         cy="42"
         r={R}
-        stroke={`url(#ccRing${score})`}
+        stroke={`url(#${gid})`}
         strokeWidth="4"
         strokeLinecap="round"
         strokeDasharray={C}
@@ -47,11 +53,11 @@ function ScoreRing({ score, delay }: { score: number; delay: number }) {
         transition={{ delay, duration: 1.2, ease: "easeOut" }}
         transform="rotate(-90 42 42)"
       />
-      <text x="42" y="40" textAnchor="middle" dominantBaseline="middle" fill="var(--color-foreground)" fontSize="21" fontWeight="700" fontFamily="var(--font-sans)">
-        {score}
+      <text x="42" y="40" textAnchor="middle" dominantBaseline="middle" fill="var(--color-foreground)" fontSize="19" fontWeight="700" fontFamily="var(--font-sans)">
+        {score.toFixed(2)}
       </text>
-      <text x="42" y="56" textAnchor="middle" dominantBaseline="middle" fill="var(--color-subtle)" fontSize="9" fontFamily="var(--font-sans)">
-        / 100
+      <text x="42" y="56" textAnchor="middle" dominantBaseline="middle" fill="var(--color-subtle)" fontSize="8.5" fontFamily="var(--font-sans)">
+        score
       </text>
     </svg>
   );
@@ -138,7 +144,7 @@ export default function CandidateCard({ candidate, index }: Props) {
             <ScoreRing score={candidate.score} delay={0.2 + index * 0.12} />
           </div>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-subtle">
-            Match
+            Model Score
           </span>
         </div>
       </div>

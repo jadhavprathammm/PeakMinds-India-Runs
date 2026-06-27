@@ -1,0 +1,8 @@
+# Sandbox (Streamlit demo) dependencies.
+# Superset of the ranking engine's runtime requirements.
+streamlit>=1.38
+numpy>=2.0
+pandas>=2.2
+pyarrow>=17.0
+sentence-transformers>=3.2
+torch>=2.4

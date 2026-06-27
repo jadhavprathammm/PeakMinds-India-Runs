@@ -1,0 +1,1409 @@
+# Resume Understanding Engine
+
+Status: Approved
+Version: V2
+Project: PeakMinds Candidate Intelligence Platform
+
+## Purpose
+
+Convert raw resume text into a fully populated CandidateProfile V2 object.
+
+Input:
+
+* Raw resume text
+* OCR output
+* Parsed PDF/DOCX text
+
+Output:
+
+* CandidateProfile V2
+
+---
+
+# Pipeline Overview
+
+Raw Resume Text
+→ Stage 0: Pre-flight & Normalization
+→ Stage 1: Section Detection
+→ Stage 2: Identity Extraction
+→ Stage 3: Skills Extraction
+→ Stage 4: Experience Extraction
+→ Stage 5: Project Extraction
+→ Stage 6: Education & Certifications Extraction
+→ Stage 7: Evidence Extraction
+→ Stage 8: Communication Signals Extraction
+→ Stage 9: Career Preferences Extraction
+→ Stage 10: Quality Signal Computation
+→ Stage 11: Risk Analysis
+→ Stage 12: Recruiter Signal Derivation
+→ Stage 13: Archetype Classification
+→ Stage 14: Assembly
+→ Stage 15: Validation
+
+---
+
+# Stage 0 - Pre-flight & Normalization
+
+Responsibility
+Receive raw text from ingestion/, apply cleaning passes, compute a baseline document quality signal, and produce the normalized input surface that all downstream stages consume. No fields are extracted here — this stage produces metadata that governs how every downstream stage behaves.
+
+Input
+
+{
+  raw_text: string                // As delivered by extraction.ts
+  source_format: "pdf" | "docx" | "txt" | "image" | "paste"
+  ocr_confidence?: number         // From tesseract.js, if applicable
+  page_count?: number             // From pdfjs, if applicable
+  char_count: number
+}
+Output
+
+{
+  normalized_text: string         // Cleaned, encoding-normalized text
+  char_count: number
+  word_count: number
+  line_count: number
+  detected_language: string       // ISO 639-1 code
+  language_confidence: number     // 0-1
+  document_quality: "unusable" | "poor" | "acceptable" | "good" | "excellent"
+  quality_signals: {
+    letter_ratio: number          // Proportion of alphabetic characters
+    avg_line_length: number
+    has_structured_sections: boolean
+    estimated_reading_time_minutes: number
+    encoding_issues_detected: boolean
+    ocr_artefacts_detected: boolean
+  }
+  normalization_log: string[]     // What was changed (for audit trail)
+}
+Cleaning passes (in order)
+Encoding normalisation — convert to UTF-8, replace smart quotes, em-dashes, non-breaking spaces with ASCII equivalents
+Whitespace collapse — reduce 3+ blank lines to 2, strip trailing whitespace per line
+Artefact removal — strip page numbers (Page 1 of 3), header/footer repeats, watermarks
+OCR correction — if source_format === "image", apply common OCR substitutions (l → 1 in numeric contexts, O → 0, rn → m)
+Line normalisation — standardise line endings to \n
+Failure modes
+Failure	Detection	Response
+letter_ratio < 0.35	Computed post-cleaning	Abort pipeline; return error DOCUMENT_TOO_CORRUPTED
+char_count < 150	Computed post-cleaning	Abort pipeline; return error DOCUMENT_TOO_SHORT
+char_count > 100_000	Computed post-cleaning	Truncate to 100K chars; add warning DOCUMENT_TRUNCATED
+detected_language !== "en"	Language detection	Continue but add warning NON_ENGLISH_RESUME; extraction quality will be lower
+ocr_confidence < 0.25 (when applicable)	From ingestion metadata	Abort with OCR_CONFIDENCE_TOO_LOW
+Validation checks
+letter_ratio >= 0.35 (minimum readability)
+char_count in [150, 100_000] (after truncation)
+word_count >= 30 (minimum content)
+document_quality !== "unusable" before proceeding
+
+---
+
+# Stage 1 - Section Detection
+
+Responsibility
+Partition the normalized resume text into named sections. Every downstream extraction stage targets one or more specific sections rather than the full text. This reduces token count per Claude call, increases extraction accuracy, and makes failure localisable — a bad education section does not contaminate skills extraction.
+
+Input
+normalized_text from Stage 0
+
+Output
+
+{
+  section_map: {
+    header: string | null          // Name, contact, title, location
+    objective_summary: string | null  // Summary, objective, profile statement
+    experience: string | null      // Work history
+    skills: string | null          // Dedicated skills section
+    projects: string | null        // Projects section
+    education: string | null       // Education and certifications
+    publications: string | null    // Papers, articles
+    awards: string | null          // Awards and recognition
+    languages: string | null       // Languages spoken
+    other: string[]                // Sections that didn't fit above
+  }
+  detected_section_count: number
+  missing_critical_sections: string[]   // "experience" | "skills" | "education"
+  section_confidence: number            // 0-1, how confident we are in the segmentation
+}
+Segmentation strategy
+Pass 1 — Heading detection (deterministic, regex-based):
+Identify lines that are visually distinct section headers. Heuristics:
+
+Line is all-caps (WORK EXPERIENCE)
+Line followed by \n--- or \n===
+Line matches a canonical section name list (see below)
+Line has font-weight: bold metadata if available from DOCX parsing
+Canonical section name list (case-insensitive, fuzzy-matched):
+
+Experience: work experience, professional experience, employment history, career history, experience
+Skills: skills, technical skills, core competencies, technologies, expertise
+Projects: projects, personal projects, side projects, open source
+Education: education, academic background, qualifications
+Publications: publications, research, papers, articles
+Awards: awards, achievements, honors, recognition
+Languages: languages, spoken languages
+Pass 2 — Boundary assignment:
+Text between two detected headers is assigned to the earlier header's section. Text before any header is assigned to header.
+
+Pass 3 — Confidence computation:
+
+section_confidence = 1.0 — all expected sections detected, clean boundaries
+section_confidence -= 0.1 per missing critical section (experience, skills)
+section_confidence -= 0.05 per ambiguous boundary
+section_confidence = max(0.2, computed) — never below 0.2; even a poor segmentation provides some value
+Failure modes
+Failure	Detection	Response
+No sections detected at all	detected_section_count === 0	Treat entire document as experience text; set all other sections null; add warning NO_SECTIONS_DETECTED
+Experience section missing	section_map.experience === null	Downstream Stage 4 (Experience) will receive full document text as fallback
+Skills section missing	section_map.skills === null	Stage 3 (Skills) mines from full text; lower confidence
+Single block of text (no structure)	section_confidence < 0.3	All sections receive full text; confidence penalty applied to all downstream stages
+Fields owned
+None directly. Produces section_map consumed by all extraction stages.
+
+---
+
+# Stage 2 - Identity Extraction
+
+Responsibility
+Extract the candidate's personal and professional identity from the document header and opening summary. These are the highest-visibility fields — they appear on every recruiter shortlist card and in every generated explanation.
+
+Input
+
+section_map.header + section_map.objective_summary
+(falls back to first 500 chars of normalized_text if header is null)
+Claude call
+Single prompt. System instruction: extract identity fields as JSON. Strict schema enforcement.
+
+Prompt strategy:
+
+Ask for each field explicitly by name
+Instruct Claude to output null (never to guess) for fields not present
+Instruct Claude to extract years_experience from explicit statements only ("8 years of experience") — not to compute from dates (date computation is handled deterministically in Stage 4)
+If both a stated YoE and computable YoE exist, keep stated; flag for cross-validation in Assembly
+Output
+
+{
+  candidate_name: string | null
+  current_title: string | null
+  current_company: string | null
+  years_experience: number | null     // Stated in summary — Stage 4 will compute independently
+  location: string | null
+  contact_email: string | null
+  spoken_languages_raw: string | null // Raw language text for Stage 6 to parse
+  stage_confidence: number            // 0-1
+  field_confidence: {
+    candidate_name: number
+    current_title: number
+    current_company: number
+    years_experience: number
+    location: number
+    contact_email: number
+  }
+  extraction_warnings: string[]
+}
+Failure modes
+Failure	Detection	Response
+candidate_name is null	Claude returned null	Set to null; add warning CANDIDATE_NAME_NOT_FOUND; not a blocker
+years_experience is negative or > 60	Post-extraction validation	Discard the value; set to null; let Stage 4 compute it from dates
+Email is malformed	Zod z.string().email() fails	Set contact_email: null; add warning
+Claude returns non-JSON	JSON parse failure	Trigger retry (see Retry Strategy)
+Validation checks
+contact_email passes Zod email format if non-null
+years_experience in [0, 60] if non-null
+candidate_name length <= 200 chars if non-null
+Fields owned
+candidate_name, current_title, current_company, years_experience (stated version), location, contact_email
+
+---
+
+# Stage 3 - Skills Extraction
+
+Responsibility
+Produce the six categorised skill arrays. This is the primary keyword-match surface for downstream recruiter matching. Accuracy here directly determines match quality in recruiter-v2/matching/.
+
+The critical design constraint: skills must be normalised, not raw. "scikit learn", "Scikit-Learn", "sklearn" are all the same thing. The extraction stage does not normalise — it extracts raw. Normalisation happens in a deterministic post-processing pass inside this stage using a canonical vocabulary list from engines/shared/ (which will be populated during implementation).
+
+Input
+
+section_map.skills (primary source)
++ section_map.experience (for inline skill mentions in role descriptions)
++ section_map.projects (for project technology mentions)
+Claude call
+Single prompt scoped to skills sections. Asks Claude to categorise each extracted skill into one of six buckets. Claude is not responsible for normalisation — it is responsible for extraction and initial categorisation.
+
+Prompt strategy:
+
+Provide the six category definitions explicitly in the prompt
+Instruct Claude to err on the side of inclusion — it is better to extract "data analysis" and have the post-processor discard it than to miss "FAISS"
+Instruct Claude not to invent skills that are not present in the text
+Ask Claude to flag skills it is uncertain about in a separate uncertain_skills array
+Output (Claude stage)
+
+{
+  raw_extraction: {
+    technical_skills: string[]
+    tools: string[]
+    frameworks: string[]
+    cloud_platforms: string[]
+    databases: string[]
+    domain_keywords: string[]
+    uncertain_skills: { skill: string; likely_category: string }[]
+  }
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass (deterministic, after Claude)
+Normalisation — map raw strings against canonical vocabulary: "scikit-learn", "Sci-Kit Learn", "sklearn" → "scikit-learn"
+Deduplication — remove duplicates within and across categories (a skill cannot appear in two categories)
+Noise filtering — discard strings below 2 chars, pure numbers, stopword-only strings
+Length limits — enforce max-per-category limits from Zod schema
+Failure modes
+Failure	Detection	Response
+All six arrays are empty	Post-processing check	Add warning NO_SKILLS_EXTRACTED; mine domain_keywords from full text as last resort
+Claude hallucinates skills	Cannot detect directly	Vocabulary normalisation step will fail to map hallucinated skills → they are discarded as unrecognised
+section_map.skills is null	Stage 1 output	Use full text; set stage_confidence -= 0.2 as penalty for unstructured extraction
+uncertain_skills.length > 20	Post-processing check	Log for audit; discard uncertain skills below 0.5 confidence
+Validation checks
+No individual skill string exceeds 100 chars
+Each array has at most 50 items
+No item appears in more than one category
+technical_skills.length + frameworks.length >= 1 (at minimum one technical signal expected)
+Fields owned
+technical_skills, tools, frameworks, cloud_platforms, databases, domain_keywords
+
+---
+
+# Stage 4 - Experience Extraction
+
+Responsibility
+The most critical and complex stage. Parses the work history section into structured RoleEntry[] and derives all experience-level signals: tenure arithmetic, role classification, leadership signals, and ownership signals. This stage contributes more fields to the final profile than any other.
+
+Design principle: Claude extracts structure; all arithmetic and classification is deterministic post-processing. Claude is never asked to compute durations, averages, or sums — it is asked to extract dates and descriptions. Arithmetic happens in code.
+
+Input
+
+section_map.experience (primary)
++ section_map.header (for current role if not in experience)
+Claude call
+Single prompt. Explicitly instructs Claude to extract each role as a structured object. Date format normalisation instruction included in prompt.
+
+Prompt strategy:
+
+Provide a target JSON schema for each role (title, company, start_date, end_date, is_current, description)
+Ask Claude to preserve start_date and end_date exactly as written, not to convert or compute
+Ask Claude to extract key_responsibilities as a bullet list, max 8 items per role
+Instruct Claude that is_current is true only when explicitly stated ("Present", "current", no end date)
+Instruct Claude not to invent roles or merge roles — one object per listed position
+Output (Claude stage)
+
+{
+  raw_roles: {
+    title: string
+    company: string
+    start_date_raw: string | null   // "Jan 2019", "2019-01", "January 2019"
+    end_date_raw: string | null     // null if current
+    is_current: boolean
+    description: string
+    key_responsibilities_raw: string[]
+  }[]
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass (deterministic)
+For each raw role:
+
+1. Date normalisation and arithmetic:
+
+
+parse_date(start_date_raw) → { year: number, month: number } | null
+parse_date(end_date_raw) → { year: number, month: number } | null (null if current)
+
+if is_current:
+  end = { year: current_year, month: current_month }
+else:
+  end = parsed end_date
+
+duration_months = (end.year - start.year) * 12 + (end.month - start.month)
+duration_months = max(0, duration_months)
+2. Role classification:
+Each title passed through taxonomy/ classifier (TS equivalent of src/taxonomies.py):
+
+classify_title(title) → RoleClass enum value
+3. Leadership signals derivation (scans key_responsibilities text):
+
+managed_teams — matches: "managed", "led a team of", "direct reports", "people manager"
+team_size_estimate — extracts number following "team of N" or "N direct reports"
+led_cross_functional_projects — matches: "cross-functional", "worked with product/design/data"
+mentored_juniors — matches: "mentored", "coached", "onboarded junior"
+presented_externally — matches: "presented at", "conference", "talk", "blog post"
+4. Ownership signals derivation (scans all role descriptions):
+
+shipped_to_production — matches deployment language: "deployed", "shipped", "launched", "serving", "in production"
+owned_full_pipeline — matches end-to-end language: "end-to-end", "from scratch", "full pipeline", "data to serving"
+led_architecture_decisions — matches: "architected", "designed the system", "technical lead", "led design"
+drove_measurable_outcomes — matches: presence of any percentage, ratio, or order-of-magnitude metric in description
+5. ML months computation:
+
+
+total_ml_months = sum of duration_months for roles where role_class in ("core_ml", "ml_adjacent")
+6. Management detection:
+
+
+has_management_experience = leadership_signals.managed_teams === true
+  OR any role_class === "management"
+Output (post-processed)
+
+{
+  role_history: RoleEntry[]
+  total_ml_months: number
+  has_management_experience: boolean
+  leadership_signals: LeadershipSignals
+  ownership_signals: OwnershipSignals
+  computed_yoe: number            // Sum of all duration_months / 12 — used to cross-check stated YoE
+  stage_confidence: number
+  date_parse_failures: number     // Count of dates that couldn't be parsed
+  extraction_warnings: string[]
+}
+Failure modes
+Failure	Detection	Response
+Claude merges two roles into one	raw_roles.length unexpectedly low	Cannot detect reliably; mitigated by prompt instruction to not merge
+Date parsing fails for a role	parse_date returns null	Set duration_months: 0 for that role; increment date_parse_failures counter
+All dates unparseable	date_parse_failures >= raw_roles.length	Set stage_confidence = 0.3; add warning ALL_DATES_UNPARSEABLE; computed_yoe = null
+Only one role found for 8+ YoE candidate	Cross-check with stated YoE	Add warning EXPERIENCE_UNDEREXTRACTED; may need retry
+is_current set for multiple roles	Post-processing check	Retain only the most recent as is_current; add warning
+section_map.experience is null	Stage 1 output	Run against full document text; set stage_confidence = 0.4
+Validation checks
+role_history.length <= 30
+Each duration_months >= 0 and <= 600
+At most one role has is_current === true
+total_ml_months <= sum of all duration_months (cannot have more ML months than career)
+start_year and end_year in [1960, 2030] for every role
+Fields owned
+role_history, total_ml_months, has_management_experience, leadership_signals, ownership_signals
+
+---
+
+# Stage 5 - Project Extraction
+
+Responsibility
+Extract structured Project objects from the projects section and from work history where project-specific language appears. Projects are first-class entities — not bullets inside role descriptions.
+
+Key design constraint: A project described under a job role ("Built a recommendation engine at Swiggy") is still a project. The extractor must recognise project entities in both the projects section and the experience section and avoid double-counting.
+
+Input
+
+section_map.projects (primary)
++ section_map.experience (for work projects not in dedicated section)
+Claude call
+Single prompt. Asks Claude to identify discrete projects across both sections and extract each as a structured object. The prompt includes explicit de-duplication instruction: if a project appears in both sections, extract it once.
+
+Prompt strategy:
+
+Provide the Project schema as the target structure
+Instruct Claude to distinguish projects from job responsibilities — a responsibility is something you did every day; a project has a beginning, an end (or ongoing status), and a deliverable
+Instruct Claude to set source: "work" for projects extracted from the experience section
+Instruct Claude to estimate complexity from the description — a single API endpoint is "trivial"; a distributed ML training pipeline is "highly_complex"
+Instruct Claude not to assign source_role_index — this is computed in post-processing
+Output (Claude stage)
+
+{
+  raw_projects: {
+    name: string
+    description: string
+    technologies: string[]
+    domain: string | null
+    impact: string | null
+    complexity: ProjectComplexity
+    production_grade: boolean
+    active_users_estimate: number | null
+    team_size: number | null
+    ownership_level: OwnershipLevel
+    start_year: number | null
+    end_year: number | null
+    is_ongoing: boolean
+    url: string | null
+    source: ProjectSource
+    source_company: string | null   // For linking to role_history
+  }[]
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass
+source_role_index assignment — for each project with source === "work" and non-null source_company, find the matching RoleEntry by company name; assign index
+team_size / ownership_level consistency — if team_size === 1, set ownership_level: "solo"
+Technology normalisation — same canonical vocabulary pass as Stage 3
+impact_metric extraction — scan impact string for percentage, ratio, or user count patterns; extract as separate field
+Deduplication — if a project appears with the same name in both sections, retain the richer description
+Failure modes
+Failure	Detection	Response
+No projects section and no project language in experience	Both inputs empty	Return projects: []; no warning (many valid resumes have no projects section)
+Claude extracts job duties as projects	Cannot detect reliably	Mitigated by prompt definition of "project vs. responsibility"; post-processing complexity check filters out items with complexity: "trivial" and production_grade: false and no impact
+projects.length > 30	Post-processing count check	Trim to 30 by preferring production_grade: true and complexity >= "complex"
+Validation checks
+Each project description.length >= 5
+start_year <= end_year where both non-null
+team_size === 1 → ownership_level === "solo"
+production_grade === true → description.length >= 20
+Fields owned
+projects[]
+
+---
+
+# Stage 6 - Education & Certifications Extraction
+
+Responsibility
+Extract degree history, educational institution, graduation year, and all certifications. Compute derived fields: has_ml_related_degree, highest_degree.
+
+Input
+
+section_map.education (primary)
++ section_map.header (some resumes list degree in the header)
+Claude call
+Single prompt targeting education section. Asks for both degrees and certifications as separate arrays.
+
+Output (Claude stage)
+
+{
+  raw_education: {
+    degree_label: string | null     // "Bachelor of Technology", "M.S.", "PhD"
+    field_of_study: string | null
+    institution: string | null
+    graduation_year: number | null
+    is_ongoing: boolean
+  }[]
+  raw_certifications: {
+    name: string
+    issuer: string | null
+    year: number | null
+  }[]
+  spoken_languages_raw: {
+    language: string
+    proficiency_raw: string | null
+  }[]
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass
+Degree normalisation — map degree labels to DegreeLevel enum:
+
+"B.Tech", "B.E.", "Bachelor", "B.Sc." → "bachelor"
+"M.Tech", "M.S.", "M.Sc.", "Master" → "master"
+"PhD", "Ph.D.", "Doctor" → "phd"
+"Diploma", "Polytechnic" → "diploma"
+Bootcamp keywords → "bootcamp"
+highest_degree computation — order by tier: phd > master > bachelor > diploma > bootcamp > self_taught; take the highest
+
+has_ml_related_degree computation — check field_of_study against ML degree vocabulary:
+
+Positive: "Computer Science", "Statistics", "Machine Learning", "AI", "Mathematics", "Data Science", "Electrical Engineering", "Information Technology"
+Negative: "Finance", "Law", "History", "Mechanical Engineering", "Architecture"
+Unknown: set false with a confidence note
+Language proficiency normalisation — map raw strings to ProficiencyLevel enum:
+
+"mother tongue", "first language", "native" → "native"
+"fluent", "advanced", "C1", "C2" → "fluent"
+"professional working", "B2" → "professional"
+"conversational", "intermediate", "B1" → "conversational"
+"basic", "beginner", "A1", "A2" → "basic"
+Failure modes
+Failure	Detection	Response
+No education section found	section_map.education === null	Return defaults: highest_degree: null, certifications: []; add warning
+graduation_year out of range	year < 1950 OR year > 2030	Discard; set to null; add warning
+Degree label unrecognisable	Not in normalisation map	Set highest_degree: null for that entry; add warning
+Validation checks
+graduation_year in [1950, 2030] if non-null
+No duplicate certification names
+certification.year in [1990, 2030] if non-null
+Fields owned
+highest_degree, field_of_study, institution, graduation_year, has_ml_related_degree, certifications[], spoken_languages[]
+
+---
+
+# Stage 7 - Evidence Extraction
+
+Responsibility
+Mine the entire document for concrete, verifiable proof points: quantified achievements, production deployment statements, open source contributions, awards, and publications. Evidence can appear in any section — an achievement in a role description, a publication in a dedicated section, an award in a header. This stage scans the full document.
+
+Key design constraint: Evidence extraction is a targeted scan for specific signal types, not a summary. Claude must not synthesise or generalise. Every Achievement.claim must be a near-verbatim quote from the resume.
+
+Input
+normalized_text (full document — evidence appears everywhere)
+
+Claude call
+Single prompt. The prompt asks Claude to find instances of five distinct evidence types. Each type has a clear definition and example in the prompt.
+
+Prompt strategy for quantified_achievements:
+
+Instruct: "Extract claims that include a metric — percentage, ratio, multiplier, count, or time unit"
+Instruct: "Copy the claim verbatim from the text, do not paraphrase"
+Instruct: "Extract the metric separately from the full claim"
+Anti-instruction: "Do not extract general statements like 'improved performance' — only extract statements with a specific measurable value"
+Prompt strategy for production_deployments:
+
+Instruct: "Extract statements describing a system that is or was deployed and serving real users or production traffic"
+Instruct: "Include the system name, scale indicators, and technology if mentioned"
+Anti-instruction: "Do not extract academic projects, demos, or prototypes unless explicitly described as production"
+Output (Claude stage)
+
+{
+  raw_achievements: {
+    claim: string
+    metric: string | null
+    domain: string | null
+    approximate_source_role_company: string | null
+  }[]
+  raw_production_deployments: string[]
+  raw_open_source: {
+    project_name: string
+    contribution_type: "creator" | "maintainer" | "contributor"
+    url: string | null
+  }[]
+  raw_awards: string[]
+  raw_publications: {
+    title: string
+    venue: string | null
+    year: number | null
+  }[]
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass
+source_role_index assignment — for each achievement with a non-null approximate_source_role_company, find the matching role index
+Deduplication — if the same production system appears in production_deployments and as a project in Stage 5's output, it is kept in both (they serve different downstream purposes)
+URL validation — for open source contributions, validate URL format; set null if malformed
+Failure modes
+Failure	Detection	Response
+Claude paraphrases instead of quoting	Detected when claim wording doesn't appear in source text	Cannot detect programmatically; mitigated by prompt instruction
+No quantified achievements found	raw_achievements.length === 0	Valid for many resumes; not an error. Evidence strength will reflect this
+Achievements without metrics extracted	metric === null for all items	Add warning; evidence_strength computation penalises this
+Validation checks
+Each claim.length in [5, 500]
+Each metric not longer than 100 chars
+publication.year in [1950, 2030] if non-null
+url format valid if non-null (for open source)
+Fields owned
+quantified_achievements[], production_deployments[], open_source_contributions[], awards_and_recognition[], publications[]
+
+---
+
+# Stage 8 - Communication Signals Extraction
+Responsibility
+Extract structured evidence of communication capability: presentations, technical writing, mentoring, community involvement. These signals are scattered throughout the resume and often appear in unconventional sections (a blog link in a header, a conference talk in a project description).
+
+Input
+normalized_text (full document — communication evidence appears everywhere)
+
+Claude call
+Single prompt. Asks Claude to scan for communication signals as five distinct evidence types.
+
+Anti-hallucination instruction: "If you cannot find direct evidence of a signal, set it to false or an empty array. Do not infer from general descriptions — only extract explicitly stated activities."
+
+Output (Claude stage)
+
+{
+  raw_presentations: {
+    title: string
+    event: string | null
+    year: number | null
+    audience_scope_raw: string | null
+    url: string | null
+  }[]
+  raw_technical_writing: {
+    has_technical_blog: boolean
+    blog_platform: string | null
+    blog_url: string | null
+    estimated_post_count: number | null
+    writing_topics: string[]
+  }
+  raw_mentoring: {
+    formal_mentoring_role: boolean
+    junior_coaching_described: boolean
+    onboarding_described: boolean
+    mentees_count_estimate: number | null
+  }
+  raw_community: {
+    open_source_maintainer: boolean
+    conference_organizer: boolean
+    community_names: string[]
+    stackoverflow_reputation_mentioned: boolean
+  }
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass
+audience_scope normalisation — map raw string to AudienceScope enum:
+
+"company all-hands", "internal", "team" → "internal"
+"city meetup", "local conference" → "local"
+"national conference", "PyCon India" → "national"
+"NeurIPS", "ICML", "international" → "international"
+communication_tier computation (deterministic):
+
+
+score = 0
+if presentations.length > 0: score += 1
+if presentations.some(p => p.audience_scope in ["national", "international"]): score += 1
+if technical_writing.has_technical_blog: score += 1
+if publications.length > 0: score += 1 (from Stage 7 output)
+if community.open_source_maintainer: score += 1
+if community.conference_organizer: score += 1
+if mentoring.formal_mentoring_role: score += 0.5
+
+tier:
+  score === 0 → "minimal"
+  score in [0.5, 1.5] → "moderate"
+  score in [2, 3] → "strong"
+  score >= 3.5 → "exceptional"
+publication_count — set to publications.length from Stage 7 output (keeps the count in sync)
+
+Failure modes
+Failure	Detection	Response
+No communication signals found	All booleans false, all arrays empty	Valid for many candidates; communication_tier → "minimal"
+Claude invents a presentation	Cannot detect directly	Mitigated by anti-hallucination prompt instruction
+Fields owned
+communication_signals (all sub-fields including communication_tier)
+---
+
+# Stage 9 - Career Preferences Extraction
+
+Responsibility
+Extract explicitly stated preferences, compensation expectations, and availability signals. This stage extracts only what is stated — it never infers. A candidate who does not state their salary expectation gets expected_compensation: null, not a guess.
+
+Design decision: Most resumes will yield a mostly-null CareerPreferences object. This is correct. The stage is designed for resumes that include a profile statement, objective section, or cover letter — not to mine implicit preferences from the work history.
+
+Input
+
+section_map.objective_summary (primary)
++ section_map.header (contact info, location)
++ first 300 chars of full text (catches "Actively seeking" type statements)
+Claude call
+Targeted prompt with explicit null-or-extract instruction. No inference permitted.
+
+Prompt instruction: "Extract only what is directly stated. If the candidate does not explicitly mention salary expectations, set expected_compensation to null. If they do not mention relocation, set relocation_willingness to 'unknown'. Never infer preferences from context."
+
+Output (Claude stage)
+
+{
+  raw_preferences: {
+    desired_roles: string[]
+    preferred_domains: string[]
+    preferred_locations: string[]
+    relocation_willingness_raw: string | null
+    work_mode_raw: string | null
+    industry_preferences: string[]
+    employment_status_raw: string | null
+    open_to_work_raw: boolean | null
+    compensation_raw: {
+      amount_raw: string | null
+      currency_raw: string | null
+      period_raw: string | null
+    } | null
+    start_date_raw: string | null
+    work_auth_raw: string | null
+  }
+  stage_confidence: number
+  extraction_warnings: string[]
+}
+Post-processing pass (deterministic normalisation)
+Map relocation_willingness_raw → RelocationWillingness enum
+Map work_mode_raw → WorkModePreference enum
+Map employment_status_raw → EmploymentStatus enum
+Parse compensation_raw → CompensationExpectation object with currency normalisation
+open_to_work defaults to false if null (absence of statement is not presence of signal)
+Failure modes
+Failure	Detection	Response
+No preferences stated	All raw fields null	Valid; return CareerPreferences object with all fields at their null/unknown defaults
+Salary amount unparseable	Cannot parse numeric from string	Set expected_compensation: null; add warning
+Fields owned
+career_preferences (all sub-fields)
+
+---
+
+# Stage 10 - Quality Signal Computation
+
+This stage makes no Claude call. It is pure deterministic computation over the outputs of all prior stages.
+
+Responsibility
+Compute the four quality signal fields that govern recruiter confidence in the entire profile: resume_quality, evidence_strength, career_consistency, and extraction_confidence. Also assemble all parsing_warnings from every prior stage into a single array.
+
+Input
+All stage outputs from Stages 0–9
+
+Computation rules
+resume_quality:
+
+
+score = 0
+if word_count >= 300: score += 1
+if section_count >= 3: score += 1
+if role_history.length >= 2: score += 1
+if quantified_achievements.length >= 1: score += 1
+if skills total items >= 10: score += 1
+if stage_1.section_confidence >= 0.7: score += 1
+
+"sparse"      → score in [0, 1]
+"adequate"    → score in [2, 3]
+"strong"      → score in [4, 5]
+"exceptional" → score >= 6
+evidence_strength:
+
+
+if quantified_achievements.length === 0:
+  "anecdotal"
+elif quantified_achievements.every(a => a.metric === null):
+  "descriptive"
+elif quantified_achievements.some(a => a.metric !== null):
+  if open_source_contributions.some(c => c.url !== null) OR publications.length > 0:
+    "verified"
+  else:
+    "quantified"
+career_consistency:
+
+
+avg_tenure = mean(role_history.map(r => r.duration_months))
+short_stint_ratio = n_short_stints / role_history.length
+
+"fragmented" → avg_tenure < 12 AND short_stint_ratio > 0.5
+"mixed"      → avg_tenure in [12, 24] OR short_stint_ratio in [0.25, 0.5]
+"consistent" → avg_tenure in [24, 48] AND short_stint_ratio < 0.25
+"linear"     → avg_tenure > 48 AND role_history titles show progression
+extraction_confidence:
+
+
+weights = {
+  identity:    0.15,
+  skills:      0.15,
+  experience:  0.30,
+  projects:    0.08,
+  education:   0.07,
+  evidence:    0.15,
+  communication: 0.05,
+  preferences: 0.05
+}
+
+extraction_confidence = weighted_sum(stage_N.stage_confidence for each N)
+extraction_confidence = clamp(extraction_confidence, 0.0, 1.0)
+parsing_warnings: Collect extraction_warnings from every prior stage, deduplicate, order by severity.
+
+Output
+
+{
+  resume_quality: ResumeQuality
+  evidence_strength: EvidenceStrength
+  career_consistency: CareerConsistency
+  extraction_confidence: number
+  parsing_warnings: string[]
+}
+Fields owned
+resume_quality, evidence_strength, career_consistency, extraction_confidence, parsing_warnings
+
+---
+
+# Stage 11 - Risk Analysis
+
+No Claude call. Deterministic computation over structured stage outputs.
+
+Responsibility
+Compute all RiskSignals fields from the extracted profile data. Risk computation is intentionally separated from extraction — it requires cross-field reasoning that is more reliable as code than as a prompt.
+
+Computation rules
+job_hopping_risk:
+
+
+short_stints = count of roles with duration_months in [1, 17]
+consecutive_short = check for 2+ consecutive short stints in role_history
+
+"none"     → short_stints === 0
+"low"      → short_stints === 1 AND NOT consecutive_short
+"moderate" → short_stints in [2, 3] OR consecutive_short with 2 roles
+"high"     → short_stints >= 4 OR consecutive_short with 3+ roles
+"critical" → avg_tenure < 10 across 3+ roles
+
+job_hopping_detail:
+  if risk >= "moderate":
+    "{short_stints} roles under 18 months across {career_span} years"
+evidence_gap_risk:
+
+
+years_claimed = years_experience (from Stage 2 stated YoE)
+years_evidenced = total_ml_months / 12 (from Stage 4)
+years_stated_in_skills = max years for any listed skill
+
+inflation_delta = years_claimed - years_evidenced
+
+"none"     → inflation_delta <= 1
+"low"      → inflation_delta in (1, 2]
+"moderate" → inflation_delta in (2, 3] OR skills claim expertise with 0 evidence
+"high"     → inflation_delta > 3
+"critical" → inflation_delta > 5
+employment_gap_risk:
+
+
+Sort role_history by start_year ascending.
+For each adjacent pair [role_i, role_i+1]:
+  gap_months = (role_i+1.start_year * 12 + role_i+1.start_month) 
+             - (role_i.end_year * 12 + role_i.end_month)
+  (where end is current date if is_current)
+
+employment_gap_months = max(gap_months across all pairs)
+
+"none"     → employment_gap_months < 3
+"low"      → employment_gap_months in [3, 6)
+"moderate" → employment_gap_months in [6, 12)
+"high"     → employment_gap_months in [12, 24)
+"critical" → employment_gap_months >= 24
+specialization_fragility_risk:
+
+
+total_skills = technical_skills + frameworks + tools + domain_keywords
+domain_skills = count of skills in any single domain (ML, web, data, etc.)
+domain_concentration = max(domain_skills) / total_skills
+
+"none"     → specializations.length >= 3 AND domain_concentration < 0.6
+"low"      → domain_concentration in [0.6, 0.75)
+"moderate" → domain_concentration in [0.75, 0.9) AND primary_framework in ["TensorFlow 1.x", "Theano"]
+"high"     → domain_concentration >= 0.9 OR entire career at one company
+"critical" → only one framework listed AND that framework is declining
+overall_risk_level:
+
+
+component_risks = [
+  job_hopping_risk, evidence_gap_risk, employment_gap_risk,
+  specialization_fragility_risk, extraction_risk, 
+  overqualification_risk, underqualification_risk
+]
+
+overall_risk_level = max(component_risks)  // By severity ordering
+risk_flags:
+
+
+Collect all non-null *_detail strings from components where risk >= "moderate".
+Order by risk level descending (critical first, then high, then moderate).
+Limit to 10 items.
+
+---
+
+# Stage 12 - Recruiter Signal Derivation
+
+No Claude call. Deterministic classification over stage outputs.
+
+Responsibility
+Compute the high-level categorical recruiter signals: seniority, role family, specializations, career trajectory, and domain posture.
+
+Computation rules
+seniority_level:
+
+
+Scoring function:
+  yoe_score = map years_experience to seniority band:
+    < 1 → intern
+    1-2 → junior
+    3-5 → mid
+    6-9 → senior
+    10-14 → staff
+    ≥ 15 → principal
+
+  title_signal = classify current_title:
+    contains "junior", "associate" → -1 tier
+    contains "senior" → +0 tiers (confirms)
+    contains "staff" → +1 tier
+    contains "principal" → +2 tiers
+    contains "director", "vp" → +3 tiers
+    contains "manager" → +0 (management track, not IC)
+
+  ownership_boost:
+    if owned_full_pipeline AND led_architecture_decisions: +1 tier
+    if shipped_to_production AND total_ml_months > 48: +0 (confirms)
+
+  seniority_level = adjust yoe_score by title_signal and ownership_boost
+  clamp to enum range
+primary_role_family and secondary_role_families:
+
+
+Evidence scoring per family:
+  "ml_engineering": title_class === "core_ml" AND has_shipped_ranking
+  "data_science": domain_keywords intersects ["EDA", "A/B", "statistics", "pandas"]
+  "research": publications.length > 0 OR title_class === "research"
+  "mlops": tools intersects ["MLflow", "Kubeflow", "Ray", "Airflow", "Kubernetes"] AND evid_deploy
+  "software_engineering": title_class in ["swe_generic"] AND NOT core_ml evidence
+  "management": has_management_experience AND managed_teams
+
+Score each family; primary = highest; secondaries = those with score > threshold, up to 3
+role_family = primary_role_family (backward compat alias)
+role_family_confidence = (primary_score - second_score) / primary_score
+specializations:
+
+
+Keyword presence → specialization label:
+  "NDCG", "BM25", "Faiss", "retrieval" → "Information Retrieval"
+  "recommendation", "collaborative filtering" → "Recommendation Systems"
+  "NLP", "transformers", "BERT", "LLM" → "NLP"
+  "CNN", "ResNet", "YOLO", "segmentation" → "Computer Vision"
+  "MLflow", "Ray Serve", "Kubeflow" → "MLOps"
+  "Flink", "Kafka", "Spark Streaming" → "Data Engineering"
+career_trajectory:
+
+
+Map role_history to seniority scores (using title classification).
+Compare first-third vs last-third of career.
+
+ascending  → mean(last_third) > mean(first_third) + 1 tier
+lateral    → means within 1 tier of each other
+descending → mean(last_third) < mean(first_third) - 1 tier
+pivoting   → role_family of first role differs from current role_family
+
+velocity:
+  "fast"   → reached senior/staff in < 6 years
+  "steady" → reached senior/staff in 6-10 years
+  "slow"   → senior with > 10 years of experience
+domain_posture:
+
+
+spec_count = len(specializations)
+skill_diversity = len(set across all skill arrays)
+domain_concentration (from risk stage)
+
+"deep_specialist" → spec_count === 1 AND domain_concentration >= 0.9
+"specialist"      → spec_count in [1, 2] AND domain_concentration >= 0.75
+"balanced"        → spec_count in [2, 3] AND domain_concentration in [0.5, 0.75)
+"generalist"      → spec_count >= 4 OR domain_concentration < 0.5
+"unfocused"       → spec_count >= 4 AND skill_diversity > 80 (breadth without depth)
+is_career_changer:
+
+
+first_two_roles = role_history.slice(0, 2)
+first_family = derive_role_family(first_two_roles)
+current_family = primary_role_family
+
+is_career_changer = (first_family !== current_family) AND (first_family !== "unknown")
+has_pre_llm_depth:
+
+
+ml_roles_before_2021 = role_history.filter(r =>
+  r.role_class in ["core_ml", "ml_adjacent"] AND r.start_year < 2021
+)
+has_pre_llm_depth = ml_roles_before_2021.length > 0
+profile_completeness:
+
+
+Checklist of 20 fields weighted by importance:
+  candidate_name (3%), current_title (5%), years_experience (7%),
+  role_history non-empty (15%), total_ml_months (5%),
+  skills non-empty (10%), frameworks non-empty (5%),
+  education at least one field (5%),
+  quantified_achievements (8%), production_deployments (8%),
+  seniority_level !== "unknown" (5%), primary_role_family !== "unknown" (5%),
+  risk_signals computed (5%), archetype pending (5%),
+  extraction_confidence (4%), career_trajectory (5%)
+
+profile_completeness = sum of weights for non-null/non-empty/non-unknown fields
+Fields owned
+seniority_level, primary_role_family, secondary_role_families, role_family, role_family_confidence, specializations, is_career_changer, has_pre_llm_depth, career_trajectory, domain_posture, profile_completeness
+
+---
+
+# Stage 13 - Archetype Classification
+
+Responsibility
+The only stage that requires synthesis over the entire extracted profile rather than extraction from source text. Classifies the candidate into an archetype and generates the top 3 differentiators that make them stand out.
+
+Design decision: This stage is Claude-assisted because archetype assignment is an interpretive act — it requires weighing evidence holistically, not applying a deterministic rule. However, the stage is tightly constrained by feeding Claude structured signals rather than raw text.
+
+Input
+All structured outputs from Stages 2–12 (not raw text — never re-expose raw resume here)
+
+Claude call
+Single synthesis prompt. Provides Claude with a structured summary of the extracted signals, not the raw resume.
+
+What Claude receives:
+
+
+{
+  summary_signals: {
+    years_experience: number
+    total_ml_months: number
+    seniority_level: string
+    primary_role_family: string
+    secondary_role_families: string[]
+    specializations: string[]
+    has_pre_llm_depth: boolean
+    ownership_signals: OwnershipSignals
+    leadership_signals: LeadershipSignals
+    production_deployments_count: number
+    quantified_achievements_count: number
+    publication_count: number
+    communication_tier: string
+    career_trajectory_direction: string
+    domain_posture: string
+    top_frameworks: string[]          // Top 5 by frequency
+    top_domain_keywords: string[]     // Top 5
+    projects_production_count: number
+    overall_risk_level: string
+  }
+}
+Prompt strategy:
+
+Provide archetype definitions from the design document (all 8 archetypes with their signal profiles)
+Ask Claude to select the primary archetype and optionally a secondary
+Ask for a confidence score and one-sentence evidence summary
+Ask for archetype_strengths (max 3) and archetype_watch_areas (max 3)
+Ask for key_differentiators (max 3) — what makes this candidate meaningfully different from the average candidate at this seniority level and role family
+Constrain: differentiators must reference specific signals from the input, not generic statements
+Anti-pattern instruction: "Do not write 'Strong Python skills' as a differentiator for a Senior ML Engineer. Every Senior ML Engineer has Python. A differentiator must be specific to this candidate."
+
+Output (Claude stage)
+
+{
+  primary_archetype: CandidateArchetype
+  secondary_archetype: CandidateArchetype | null
+  confidence: number
+  evidence_summary: string
+  archetype_strengths: string[]
+  archetype_watch_areas: string[]
+  key_differentiators: string[]
+  stage_confidence: number
+}
+Post-processing pass
+Consistency check — validate archetype against computed signals:
+If primary_archetype === "builder" but ownership_signals.shipped_to_production === false: downgrade confidence to min(confidence, 0.5)
+If primary_archetype === "researcher" but publications.length === 0: downgrade confidence to min(confidence, 0.5)
+Key differentiators quality check — if key_differentiators.length < 1 OR all items are generic → set to [] and add warning KEY_DIFFERENTIATORS_LOW_QUALITY; downstream will render empty rather than generic
+Failure modes
+Failure	Detection	Response
+Claude returns invalid archetype value	Zod validation	Retry once with clarified prompt; if retry fails, set to best deterministic fallback based on primary_role_family
+confidence < 0.3 returned	Threshold check	Add warning; set secondary_archetype: null; flag for manual review in recruiter report
+Generic differentiators	Post-processing quality check	Return key_differentiators: [] with warning rather than surfacing poor-quality content
+Fields owned
+archetype, key_differentiators
+
+---
+
+# Stage 14 - Assembly
+
+No Claude call. Pure merge of all stage outputs into a single CandidateProfile object.
+
+Responsibility
+Merge all stage outputs, resolve conflicts, compute the years_experience final value, apply backward-compatibility aliases, and produce the complete CandidateProfile ready for validation.
+
+Conflict resolution rules
+Conflict	Resolution
+years_experience stated (Stage 2) vs. computed from dates (Stage 4)	If delta <= 2 years: use computed (more accurate). If delta > 2 years: use stated, add warning YOE_CONFLICT_LARGE_DELTA, add both values to parsing_warnings
+Multiple is_current === true roles in role_history	Retain only the highest start_year role as current; mark others false; add warning
+profile_completeness from Stage 12 vs. final state after archetype	Recompute using final profile state
+publication_count in communication_signals vs. publications.length in evidence	Always set publication_count = publications.length (computed field must mirror actual array)
+Backward compatibility
+
+profile.role_family = profile.primary_role_family
+Assembly order
+
+1. Start with identity fields (Stage 2)
+2. Merge skills (Stage 3)
+3. Merge experience fields (Stage 4)
+4. Merge projects (Stage 5)
+5. Merge education + languages (Stage 6)
+6. Merge evidence (Stage 7)
+7. Merge communication signals (Stage 8)  — set publication_count = publications.length
+8. Merge career preferences (Stage 9)
+9. Apply quality signals (Stage 10)
+10. Apply risk signals (Stage 11)
+11. Apply recruiter signals (Stage 12)
+12. Apply archetype + differentiators (Stage 13)
+13. Resolve conflicts per rules above
+14. Set backward-compat aliases
+15. Final profile_completeness recomputation
+Fields owned
+The complete CandidateProfile object. No new fields — assembly only.
+
+---
+
+# Stage 15 - Validation
+
+No Claude call. Runs the full Zod schema parse + all cross-field invariant checks from the design document.
+
+Responsibility
+Ensure the assembled profile is internally consistent, schema-valid, and safe for consumption by downstream stages. Validation failures produce warnings, not errors — a partially valid profile is always better than no profile. The only hard abort is if the profile cannot be parsed at all by the Zod schema.
+
+Validation passes (in order)
+Pass 1 — Zod schema parse:
+
+
+const result = CandidateProfileV2Schema.safeParse(assembled_profile);
+if (!result.success) {
+  for each error in result.error.issues:
+    attempt to auto-correct (coerce types, apply defaults)
+    if uncorrectable: add to parsing_warnings
+}
+Pass 2 — Cross-field invariants (from the design document Phase 5):
+All 16 cross-field invariants run in the order defined. Each auto-corrects where possible and adds a warning where it cannot.
+
+Pass 3 — Confidence gates:
+
+
+if extraction_confidence < 0.4:
+  add warning PIPELINE_LOW_CONFIDENCE
+  flag profile for downstream stages to apply scepticism
+
+if extraction_confidence < 0.2:
+  // Extreme failure — profile barely populated
+  add warning PROFILE_UNRELIABLE
+  // Still return the profile — never fail silently
+Pass 4 — Empty array minimums for critical fields:
+
+
+if role_history.length === 0:
+  add warning CRITICAL_MISSING_EXPERIENCE
+if technical_skills.length === 0 AND frameworks.length === 0:
+  add warning CRITICAL_MISSING_SKILLS
+Output
+
+{
+  profile: CandidateProfile  // Always returned, even if partially invalid
+  is_valid: boolean
+  validation_errors: number
+  auto_corrections: string[]
+}
+
+---
+
+# Confidence Scoring Strategy
+
+Three confidence levels
+1. Field-level confidence (produced by each Claude stage)
+
+Each Claude extraction stage asks the model to include an uncertain_fields array — fields where the model is not confident. Fields listed in uncertain_fields have their field_confidence set to 0.4; all others default to 0.85. These per-field confidences are stored in stage metadata (not in the final profile) and used only by the Assembly stage to detect conflicts.
+
+2. Stage confidence (produced by each stage)
+
+Each stage computes its own stage_confidence: number based on source quality and extraction completeness:
+
+Factor	Adjustment
+Source section was null	−0.20
+Claude returned fewer items than expected	−0.10
+JSON parse required retry	−0.15
+Post-processing discarded >30% of items (noise)	−0.15
+Validation warnings fired	−0.05 per warning
+Base	1.0
+3. Overall extraction_confidence (computed in Stage 10)
+
+Weighted average of stage confidences. Experience stage has the highest weight because it contributes the most fields and most downstream signal.
+
+
+Stage weights:
+  Pre-flight:       not included (metadata only)
+  Segmentation:     0.05 (affects everything downstream)
+  Identity:         0.10
+  Skills:           0.15
+  Experience:       0.30
+  Projects:         0.08
+  Education:        0.05
+  Evidence:         0.15
+  Communication:    0.05
+  Preferences:      0.02
+  Archetype:        0.05
+Confidence-gated behaviour
+Downstream stages read extraction_confidence and profile_completeness and adjust:
+
+Condition	Downstream effect
+extraction_confidence < 0.4	gaps/ marks all gaps as low_confidence; explanations/ adds caveat
+extraction_confidence < 0.6	evidence/ stage appends "Evidence extracted from potentially incomplete resume"
+resume_quality === "sparse"	scoring/ applies completeness penalty factor
+archetype.confidence < 0.5	explanations/ omits archetype-specific opening line; uses generic seniority opening
+key_differentiators === []	reports/ omits the differentiators section; does not render empty
+---
+
+# Retry Strategy
+
+Retry trigger conditions
+A Claude stage retries when any of the following occur:
+
+JSON parse failure — response is not parseable as JSON
+Zod validation failure — response parses but fails schema validation
+Critical field null — a field marked required in the stage output contract is null (e.g., role_history from Stage 4 is null when experience section was non-null)
+Stage confidence < 0.35 — initial extraction is below minimum utility threshold
+Retry protocol
+
+Stage execution:
+  Attempt 1: Standard prompt, temperature 0.2
+    ↓ (on trigger condition)
+  Wait 0 seconds (no backoff for first retry)
+  Attempt 2: Clarified prompt + explicit JSON schema in prompt + temperature 0.1
+             + add instruction "Your previous response failed schema validation.
+               Here is the exact JSON structure required: [schema]"
+    ↓ (on trigger condition)
+  No Attempt 3: Accept failure, return safe defaults
+
+On failure of Attempt 2:
+  Return stage_defaults (empty arrays, null scalars, unknown enums)
+  Set stage_confidence = 0.1
+  Add warning "{STAGE_NAME}_EXTRACTION_FAILED_AFTER_RETRY"
+  Continue pipeline — never abort mid-pipeline on a single stage failure
+Stage-specific fallbacks on failure
+Stage	Fallback on complete failure
+Identity (Stage 2)	All fields null; candidate_name: null; pipeline continues
+Skills (Stage 3)	All skill arrays empty; downstream matching will return 0 keyword matches
+Experience (Stage 4)	role_history: []; total_ml_months: 0; risk stage will flag CRITICAL_MISSING_EXPERIENCE
+Projects (Stage 5)	projects: []; no impact on other stages
+Education (Stage 6)	All null; certifications: []; has_ml_related_degree: false
+Evidence (Stage 7)	All arrays empty; evidence_strength: "anecdotal"
+Communication (Stage 8)	All signals minimal/false; communication_tier: "minimal"
+Preferences (Stage 9)	All unknown/null; no impact on core pipeline
+Archetype (Stage 13)	primary_archetype computed deterministically from primary_role_family mapping; key_differentiators: []
+The pipeline never returns an error to the caller. It always returns a CandidateProfile object. The extraction_confidence and parsing_warnings fields communicate the reliability of the output.
+
+---
+
+# Final JSON Assembly Process
+
+Input contract
+All 13 stage outputs, each conforming to their individual output contract.
+
+Assembly algorithm
+
+function assembleCandidateProfile(stages: StageOutputs): CandidateProfile {
+
+  // Step 1: Resolve years_experience conflict
+  const computed_yoe = stages.experience.computed_yoe;
+  const stated_yoe = stages.identity.years_experience;
+  const years_experience = resolveYoE(stated_yoe, computed_yoe);
+
+  // Step 2: Merge all flat fields from stages into one object
+  const draft: Partial<CandidateProfile> = {
+    // Identity (Stage 2)
+    candidate_name:    stages.identity.candidate_name,
+    current_title:     stages.identity.current_title,
+    current_company:   stages.identity.current_company,
+    years_experience:  years_experience,
+    location:          stages.identity.location,
+    contact_email:     stages.identity.contact_email,
+
+    // Skills (Stage 3)
+    technical_skills:  stages.skills.technical_skills,
+    tools:             stages.skills.tools,
+    frameworks:        stages.skills.frameworks,
+    cloud_platforms:   stages.skills.cloud_platforms,
+    databases:         stages.skills.databases,
+    domain_keywords:   stages.skills.domain_keywords,
+
+    // Experience (Stage 4)
+    role_history:              stages.experience.role_history,
+    total_ml_months:           stages.experience.total_ml_months,
+    has_management_experience: stages.experience.has_management_experience,
+    leadership_signals:        stages.experience.leadership_signals,
+    ownership_signals:         stages.experience.ownership_signals,
+
+    // Projects (Stage 5)
+    projects: stages.projects.projects,
+
+    // Education (Stage 6)
+    highest_degree:        stages.education.highest_degree,
+    field_of_study:        stages.education.field_of_study,
+    institution:           stages.education.institution,
+    graduation_year:       stages.education.graduation_year,
+    has_ml_related_degree: stages.education.has_ml_related_degree,
+    certifications:        stages.education.certifications,
+    spoken_languages:      stages.education.spoken_languages,
+
+    // Evidence (Stage 7)
+    quantified_achievements:    stages.evidence.quantified_achievements,
+    production_deployments:     stages.evidence.production_deployments,
+    open_source_contributions:  stages.evidence.open_source_contributions,
+    awards_and_recognition:     stages.evidence.awards_and_recognition,
+    publications:               stages.evidence.publications,
+
+    // Communication Signals (Stage 8)
+    communication_signals: {
+      ...stages.communication.communication_signals,
+      publication_count: stages.evidence.publications.length,  // Always recompute
+    },
+
+    // Career Preferences (Stage 9)
+    career_preferences: stages.preferences.career_preferences,
+
+    // Quality Signals (Stage 10)
+    resume_quality:         stages.quality.resume_quality,
+    evidence_strength:      stages.quality.evidence_strength,
+    career_consistency:     stages.quality.career_consistency,
+    extraction_confidence:  stages.quality.extraction_confidence,
+    parsing_warnings:       stages.quality.parsing_warnings,
+
+    // Risk Signals (Stage 11)
+    risk_signals: stages.risk.risk_signals,
+
+    // Recruiter Signals (Stage 12)
+    seniority_level:           stages.recruiter.seniority_level,
+    primary_role_family:       stages.recruiter.primary_role_family,
+    secondary_role_families:   stages.recruiter.secondary_role_families,
+    role_family:               stages.recruiter.primary_role_family,  // Backward compat
+    role_family_confidence:    stages.recruiter.role_family_confidence,
+    specializations:           stages.recruiter.specializations,
+    is_career_changer:         stages.recruiter.is_career_changer,
+    has_pre_llm_depth:         stages.recruiter.has_pre_llm_depth,
+    career_trajectory:         stages.recruiter.career_trajectory,
+    domain_posture:            stages.recruiter.domain_posture,
+    profile_completeness:      stages.recruiter.profile_completeness,
+
+    // Archetype (Stage 13)
+    archetype:            stages.archetype.archetype,
+    key_differentiators:  stages.archetype.key_differentiators,
+  };
+
+  // Step 3: Apply conflict resolution
+  draft = resolveConflicts(draft, stages);
+
+  // Step 4: Final recomputation of derived fields
+  draft.profile_completeness = recomputeProfileCompleteness(draft);
+
+  return draft as CandidateProfile;
+}
+resolveYoE logic
+
+function resolveYoE(stated: number | null, computed: number | null): number {
+  if (stated === null && computed === null) return 0;
+  if (stated === null) return computed!;
+  if (computed === null) return stated;
+
+  const delta = Math.abs(stated - computed);
+  if (delta <= 2) return computed;  // Computed is more precise
+
+  // Large delta — stated may include non-professional experience
+  // Use stated but add a warning (handled in Stage 10 quality computation)
+  return stated;
+}
+Output
+A complete, validated CandidateProfile object — ready for engines/candidate-v2/evidence/, gaps/, scoring/, recommendations/, and reports/ stages.
+
+---
+
+# Field Ownership Map
+
+
+CandidateProfile Field	Owning Stage
+candidate_name, current_title, current_company, location, contact_email	Stage 2 — Identity
+years_experience	Stage 2 (stated) + Stage 4 (computed) → Stage 14 resolves
+technical_skills, tools, frameworks, cloud_platforms, databases, domain_keywords	Stage 3 — Skills
+role_history[], total_ml_months, has_management_experience, leadership_signals, ownership_signals	Stage 4 — Experience
+projects[]	Stage 5 — Projects
+highest_degree, field_of_study, institution, graduation_year, has_ml_related_degree, certifications[], spoken_languages[]	Stage 6 — Education
+quantified_achievements[], production_deployments[], open_source_contributions[], awards_and_recognition[], publications[]	Stage 7 — Evidence
+communication_signals	Stage 8 — Communication
+career_preferences	Stage 9 — Preferences
+resume_quality, evidence_strength, career_consistency, extraction_confidence, parsing_warnings	Stage 10 — Quality
+risk_signals	Stage 11 — Risk
+seniority_level, primary_role_family, secondary_role_families, role_family, role_family_confidence, specializations, is_career_changer, has_pre_llm_depth, career_trajectory, domain_posture, profile_completeness	Stage 12 — Recruiter Signals
+archetype, key_differentiators	Stage 13 — Archetype
+Final merged CandidateProfile	Stage 14 — Assembly
+
+---
+
+# Pipeline Invariants
+
+These properties must hold at every point in the pipeline, regardless of extraction quality:
+
+The pipeline never throws. Every stage wraps its Claude call in try/catch. Every failure mode has a defined safe default. The caller always receives a CandidateProfile object.
+
+Stage outputs are immutable. Once a stage produces its output, no subsequent stage modifies it. Assembly reads from stage outputs; it does not call stages again. This makes the pipeline deterministic given the same stage outputs.
+
+Warnings accumulate, never overwrite. Every stage appends to extraction_warnings; nothing clears it. The Assembly stage collects all warnings from all stages. The final parsing_warnings array is the complete audit trail of everything that went wrong.
+
+Claude is never given raw resume text in Stage 13. The archetype synthesis stage receives structured signals only. This prevents the model from making archetype decisions based on superficial textual features (a candidate who uses the word "innovative" should not get a "founder" archetype because of one word).
+
+Deterministic stages produce the same output given the same input. Stages 0, 1, 10, 11, 12, 14, and 15 are pure functions. Given the same stage inputs, they will always produce the same outputs. Only Stages 2–9 and 13 involve Claude and may vary between runs. This property is essential for debugging — if a profile looks wrong, the first question is whether the variance is in a deterministic stage (a code bug) or a Claude stage (a prompt tuning opportunity).

@@ -1,7 +1,11 @@
-# Runtime binary artifacts (too large for git, must be mounted/downloaded)
+# Large embedding vectors (147 MB each) — regenerable via build_embeddings.py.
+# rank.py does NOT need these: semantic_fit is already merged into the parquet.
 services/ranking-engine/artifacts/*.npy
-services/ranking-engine/artifacts/*.parquet
 services/ranking-engine/artifacts/*.csv.gz
+
+# NOTE: candidate_features.parquet (5.5 MB) and reasoning_facts.parquet (1.8 MB)
+# are intentionally COMMITTED so `python rank.py` reproduces the submission from a
+# fresh clone with no manual data placement. Do not add *.parquet back to ignore.
 
 # Raw candidate data (large, must be placed manually or via env var)
 data/candidates.jsonl

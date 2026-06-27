@@ -4,18 +4,18 @@ import type { Metadata } from "next";
 export const metadata: Metadata = {
   title: "System Architecture",
   description:
-    "How PeakMinds turns 10,000 applications into a ranked, explainable Top 100 — end to end.",
+    "How PeakMinds turns 100,000 applications into a ranked, explainable Top 100 — end to end.",
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Section A.5 — Submission Intelligence stats
 // ─────────────────────────────────────────────────────────────────────────────
 const STATS: { value: string; label: string }[] = [
-  { value: "10,000+", label: "Candidate Profiles" },
-  { value: "96", label: "Features Per Candidate" },
+  { value: "100,000", label: "Candidate Profiles" },
+  { value: "93", label: "Signals Per Candidate" },
   { value: "384-D", label: "Semantic Embeddings" },
   { value: "Top 100", label: "Final Selection" },
-  { value: "< 5 min", label: "Processing Runtime" },
+  { value: "< 5 min", label: "Ranking Runtime" },
   { value: "100%", label: "Offline Processing" },
 ];
 
@@ -23,7 +23,7 @@ const STATS: { value: string; label: string }[] = [
 // Section A.6 — Pipeline overview strip
 // ─────────────────────────────────────────────────────────────────────────────
 const PIPELINE_STEPS = [
-  "10,000 Candidate Profiles",
+  "100,000 Candidate Profiles",
   "Feature Extraction",
   "Embedding Generation",
   "7-Pillar Ranking Engine",
@@ -54,7 +54,7 @@ const LAYERS: {
     modules: [
       {
         name: "Candidate Dataset",
-        detail: "10,000+ applicant profiles",
+        detail: "100,000 applicant profiles",
         items: ["JSONL corpus", "Streaming ingest"],
       },
       {
@@ -75,7 +75,7 @@ const LAYERS: {
       },
       {
         name: "Feature Extraction",
-        detail: "96 deterministic signals",
+        detail: "92 deterministic signals",
         items: ["Role signals", "Skill signals", "Experience", "Company"],
       },
     ],
@@ -158,7 +158,7 @@ const PIPELINE: {
     n: 1,
     name: "Data Ingestion",
     purpose: "Stream the full candidate corpus without loading it all into memory.",
-    input: "candidates.jsonl — 10,000+ records",
+    input: "candidates.jsonl — 100,000 records",
     output: "Parsed candidate records (profile, career, skills, certs)",
     methods: ["Streaming JSONL reader", "UTF-8 normalization"],
   },
@@ -183,7 +183,7 @@ const PIPELINE: {
     name: "Feature Engineering",
     purpose: "Convert each candidate into measurable, deterministic signals.",
     input: "Structured candidate record",
-    output: "96-feature vector per candidate",
+    output: "92-feature vector per candidate",
     methods: ["Keyword/dictionary scans", "Date math", "Taxonomy lookups", "Availability scoring"],
   },
   {
@@ -243,19 +243,19 @@ const DEEP_DIVE: { title: string; body: string; formula?: string }[] = [
   {
     title: "Feature Extraction",
     body:
-      "Each profile is reduced to 96 deterministic features — role class, applied-ML years, production-deployment evidence, evaluation-framework signals, tenure stability, location & notice availability, and trust signals. No model involved; every feature is fully reproducible.",
+      "Each profile is reduced to 92 deterministic features — role class, applied-ML years, production-deployment evidence, evaluation-framework signals, tenure stability, location & notice availability, and trust signals. No model involved; every feature is fully reproducible. A semantic relevance score is added next, for 93 signals total.",
   },
   {
     title: "Embeddings & Semantic Matching",
     body:
-      "Career text is encoded with all-MiniLM-L6-v2 into a 384-dimensional dense vector. Semantic fit is the cosine similarity between the candidate vector and pooled JD-intent exemplars — a bounded, interpretable measure of meaning-level relevance that survives keyword obfuscation.",
+      "Career text is encoded with all-MiniLM-L6-v2 into a 384-dimensional dense vector. We take the cosine similarity between the candidate vector and pooled JD-intent exemplars, then percentile-rank it across all 100,000 candidates — a bounded, interpretable relevance score (semantic_fit) that survives keyword obfuscation.",
     formula:
-      "E_cand = MiniLM(headline ⊕ summary ⊕ career_text) ∈ ℝ³⁸⁴\nsemantic_fit = cos(E_cand, E_jd)",
+      "cos_jd = 0.4·cos(E_profile, E_jd) + 0.6·cos(E_career, E_jd)\nsemantic_fit = percentile_rank(cos_jd) ∈ [0, 1]",
   },
   {
     title: "Weighted Ranking",
     body:
-      "Seven pillars are combined with fixed, audited weights. Hard gates (wrong-role stuffing, services-only, CV-primary, recent-LLM-only) apply a multiplicative penalty and cap the achievable tier. Tier 5 represents the elite top candidates.",
+      "Seven pillars are combined with fixed, audited weights. Five hard gates (wrong-role stuffing, services-only, research-only, CV-primary, recent-LLM-only) apply a multiplicative penalty and cap the achievable tier; honeypot and structural-twin profiles are excluded outright. Tier 5 represents the elite top candidates.",
     formula:
       "S_fit = 0.42·role + 0.18·exp + 0.12·prod + 0.08·prellm + 0.08·loc + 0.07·tenure + 0.05·trust\nS = S_fit × availability × Π gate_penalties",
   },
@@ -278,7 +278,7 @@ const FILES: {
 }[] = [
   {
     name: "build_features.py",
-    responsibility: "Extracts the 96 deterministic features for every candidate.",
+    responsibility: "Extracts the 92 deterministic features for every candidate.",
     inputs: "candidates.jsonl",
     outputs: "candidate_features.parquet",
     role: "Feature engineering entrypoint",
@@ -358,10 +358,10 @@ export default function ArchitecturePage() {
             <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
               At a Glance
             </p>
-            <h2 className="mt-3 text-3xl sm:text-[38px] font-bold tracking-[-0.02em] leading-[1.1] text-foreground">
+            <h2 className="mt-3 text-4xl font-bold leading-tight text-foreground">
               Submission Intelligence
             </h2>
-            <p className="mt-3 text-[15px] leading-[1.6] text-foreground/60">
+            <p className="mt-3 text-xl leading-8 text-foreground/60">
               The scale and complexity behind the final Top 100 ranking.
             </p>
           </div>
@@ -430,7 +430,7 @@ export default function ArchitecturePage() {
         <SectionHeading
           eyebrow="End to End"
           title="System Architecture"
-          subtitle="Five layers turn a raw corpus into a ranked, explainable deliverable — fully offline, on CPU, in under five minutes."
+          subtitle="Five layers turn a raw corpus into a ranked, explainable deliverable — fully offline on CPU. Embeddings are precomputed once; the ranking step runs in under five minutes."
         />
 
         <div className="mx-auto mt-12 max-w-4xl">
@@ -456,8 +456,8 @@ export default function ArchitecturePage() {
                   <div className="grid gap-3 pl-2 md:grid-cols-2">
                     {layer.modules.map((m) => (
                       <div key={m.name} className="rounded-xl border border-border bg-surface/60 p-4 lg:p-5">
-                        <p className="text-[15px] font-semibold tracking-tight text-foreground">{m.name}</p>
-                        <p className="mt-0.5 text-[12.5px] text-subtle">{m.detail}</p>
+                        <p className="text-2xl font-semibold tracking-tight text-foreground">{m.name}</p>
+                        <p className="mt-0.5 text-base leading-7 text-subtle">{m.detail}</p>
                         <div className="mt-3 flex flex-wrap gap-1.5">
                           {m.items.map((it) => (
                             <span key={it} className="rounded-full border border-border bg-surface-elevated px-2.5 py-0.5 text-[11px] text-muted">
@@ -486,13 +486,13 @@ export default function ArchitecturePage() {
           <SectionHeading
             eyebrow="The Centerpiece"
             title="Inside the Ranking Engine"
-            subtitle="The exact weighted formula used to evaluate all 10,000 candidates and generate the final Top 100 ranking."
+            subtitle="The exact weighted formula used to evaluate all 100,000 candidates and generate the final Top 100 ranking."
           />
 
           {/* Final Ranking Formula card — above weight distribution */}
           <div className="mx-auto mt-12 max-w-3xl rounded-card border border-border bg-surface/50 p-7 lg:p-9">
             <div className="flex items-center justify-between gap-3 mb-5">
-              <h3 className="text-[17px] font-semibold tracking-tight text-foreground">
+              <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                 Final Ranking Formula
               </h3>
               <span className="shrink-0 rounded-full border border-accent/25 bg-accent/[0.07] px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-accent">
@@ -529,7 +529,7 @@ export default function ArchitecturePage() {
               </div>
             </div>
 
-            <p className="mt-4 text-[13px] leading-[1.6] text-muted text-center">
+            <p className="mt-4 text-base leading-7 text-muted text-center">
               Every candidate is ranked using this deterministic scoring framework before final ordering.
             </p>
           </div>
@@ -537,7 +537,7 @@ export default function ArchitecturePage() {
           {/* Weight distribution chart */}
           <div className="mx-auto mt-5 max-w-3xl rounded-card border border-border bg-surface/50 p-6 lg:p-9">
             <div className="flex items-baseline justify-between mb-6">
-              <h3 className="text-[17px] font-semibold tracking-tight text-foreground">
+              <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                 Final Fit Score — weight distribution
               </h3>
               <span className="text-[12px] font-medium text-faint">Σ = 1.00</span>
@@ -547,7 +547,7 @@ export default function ArchitecturePage() {
               {PILLARS.map((p) => (
                 <div key={p.name}>
                   <div className="flex items-center gap-3 sm:gap-4">
-                    <span className="w-40 shrink-0 text-[13.5px] font-medium text-foreground/90 sm:w-52">
+                    <span className="w-40 shrink-0 text-base font-medium text-foreground/90 sm:w-52">
                       {p.name}
                     </span>
                     <div className="relative h-6 flex-1 overflow-hidden rounded-md border border-border bg-background/60">
@@ -567,7 +567,7 @@ export default function ArchitecturePage() {
               ))}
             </div>
 
-            <p className="mt-6 text-[14px] leading-[1.7] text-foreground/70">
+            <p className="mt-6 text-base leading-7 text-foreground/70">
               <span className="font-semibold text-foreground">Why one candidate outranks another:</span>{" "}
               Role Fit dominates at <span className="font-semibold text-accent">42%</span>, but
               inside it semantic relevance and hard evidence each weigh more than the job
@@ -589,14 +589,14 @@ export default function ArchitecturePage() {
                   <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent mb-3">
                     Transparency
                   </p>
-                  <h3 className="text-[22px] font-bold tracking-tight text-foreground">
+                  <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                     100% Explainable Ranking
                   </h3>
                 </div>
                 <AuditIcon />
               </div>
 
-              <p className="mt-4 text-[15px] leading-[1.75] text-foreground/75">
+              <p className="mt-4 text-lg leading-8 text-foreground/75">
                 Every ranking decision can be traced back to deterministic features, semantic
                 similarity scores, weighted signals, and availability modifiers.
               </p>
@@ -623,7 +623,7 @@ export default function ArchitecturePage() {
       <section className="border-t border-border bg-surface/20" aria-label="Beyond keyword matching">
         <div className="container-page py-14 lg:py-20">
           <div className="mx-auto max-w-3xl">
-            <h3 className="text-center text-[22px] font-bold tracking-tight text-foreground mb-8">
+            <h3 className="text-center text-4xl font-bold leading-tight text-foreground mb-8">
               Beyond Keyword Matching
             </h3>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -638,7 +638,7 @@ export default function ArchitecturePage() {
                     "Keyword stuffing influence",
                     "Limited semantic understanding",
                   ].map((item) => (
-                    <li key={item} className="flex items-start gap-2.5 text-[13.5px] text-foreground/65">
+                    <li key={item} className="flex items-start gap-2.5 py-4 text-base text-foreground/65">
                       <XIcon />
                       {item}
                     </li>
@@ -659,7 +659,7 @@ export default function ArchitecturePage() {
                     "Availability scoring",
                     "Trust signals",
                   ].map((item) => (
-                    <li key={item} className="flex items-start gap-2.5 text-[13.5px] text-foreground/85">
+                    <li key={item} className="flex items-start gap-2.5 py-4 text-base text-foreground/85">
                       <CheckIcon />
                       {item}
                     </li>
@@ -689,11 +689,11 @@ export default function ArchitecturePage() {
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-[14px] font-bold tabular-nums text-accent">
                     {p.n}
                   </span>
-                  <h3 className="text-[18px] font-semibold tracking-tight text-foreground">
+                  <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                     {p.name}
                   </h3>
                 </div>
-                <p className="mt-3 text-[14px] leading-[1.6] text-foreground/70">{p.purpose}</p>
+                <p className="mt-3 text-base leading-7 text-foreground/70">{p.purpose}</p>
                 <dl className="mt-4 space-y-2 text-[13px]">
                   <Row label="Input" value={p.input} />
                   <Row label="Output" value={p.output} />
@@ -722,10 +722,10 @@ export default function ArchitecturePage() {
           <div className="mx-auto mt-12 flex max-w-3xl flex-col gap-5">
             {DEEP_DIVE.map((d) => (
               <div key={d.title} className="rounded-card border border-border bg-surface/50 p-6 lg:p-7">
-                <h3 className="text-[19px] font-semibold tracking-tight text-foreground">
+                <h3 className="text-2xl font-semibold tracking-tight text-foreground">
                   {d.title}
                 </h3>
-                <p className="mt-2.5 text-[15px] leading-[1.7] text-foreground/75">{d.body}</p>
+                <p className="mt-2.5 text-base leading-7 text-foreground/75">{d.body}</p>
                 {d.formula && (
                   <pre className="mt-4 overflow-x-auto rounded-xl border border-border bg-background/60 px-4 py-3.5 font-mono text-[13px] leading-[1.7] text-accent/90 whitespace-pre-wrap">
                     {d.formula}
@@ -752,14 +752,14 @@ export default function ArchitecturePage() {
                 className="rounded-card border border-border bg-surface/50 p-6 transition-colors duration-[250ms] hover:border-border-strong"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <code className="font-mono text-[15px] font-semibold text-foreground">
+                  <code className="font-mono text-2xl font-semibold text-foreground">
                     {f.name}
                   </code>
                   <span className="shrink-0 rounded-full border border-accent/25 bg-accent/[0.07] px-2.5 py-0.5 text-[11px] font-medium text-accent">
                     {f.role}
                   </span>
                 </div>
-                <p className="mt-3 text-[14px] leading-[1.6] text-foreground/75">
+                <p className="mt-3 text-base leading-7 text-foreground/75">
                   {f.responsibility}
                 </p>
                 <dl className="mt-4 space-y-2 text-[13px]">
@@ -775,10 +775,10 @@ export default function ArchitecturePage() {
       {/* ── Closing CTA ──────────────────────────────────────────────────────── */}
       <section className="border-t border-border">
         <div className="container-page py-16 text-center lg:py-20">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">
+          <h2 className="text-4xl font-bold leading-tight text-foreground">
             See the engine&apos;s output.
           </h2>
-          <p className="mx-auto mt-3 max-w-md text-[15px] text-muted">
+          <p className="mx-auto mt-3 max-w-md text-xl leading-8 text-muted">
             Every formula on this page produced one ranked, explainable list.
           </p>
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -805,10 +805,10 @@ function SectionHeading({ eyebrow, title, subtitle }: { eyebrow: string; title: 
       <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-accent">
         {eyebrow}
       </p>
-      <h2 className="mt-3 text-3xl sm:text-4xl lg:text-[44px] font-bold tracking-[-0.02em] leading-[1.1] text-foreground">
+      <h2 className="mt-3 text-4xl font-bold leading-tight text-foreground">
         {title}
       </h2>
-      <p className="mx-auto mt-4 max-w-xl text-[16px] leading-[1.6] text-foreground/65">
+      <p className="mx-auto mt-4 max-w-xl text-xl leading-8 text-foreground/65">
         {subtitle}
       </p>
     </div>

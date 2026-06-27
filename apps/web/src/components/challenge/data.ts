@@ -1,6 +1,7 @@
-// Top candidates from services/ranking-engine/submissions/team_redrob.csv
-// Scores normalized to 0-100 display scale (raw CSV scores peak at ~1.011).
-// Reasoning condensed into short proof chips — no paragraphs.
+// Top candidates from services/ranking-engine/submissions/team_redrob.csv.
+// `score` is the REAL model score (S = S_fit × availability) — identical to the
+// submission CSV. Reasoning condensed into short proof chips drawn from the
+// engine's actual reasoning string — no paragraphs, no invented values.
 export interface RankedCandidate {
   id: string;
   rank: number;
@@ -18,7 +19,7 @@ export const TOP_CANDIDATES: RankedCandidate[] = [
     role: "Senior Machine Learning Engineer",
     company: "Genpact AI",
     experience: 6,
-    score: 98,
+    score: 1.0106,
     chips: ["Production ranking", "NDCG · MRR · A/B", "6 yrs applied ML"],
   },
   {
@@ -27,7 +28,7 @@ export const TOP_CANDIDATES: RankedCandidate[] = [
     role: "Senior NLP Engineer",
     company: "Niramai",
     experience: 8,
-    score: 96,
+    score: 0.9893,
     chips: ["Production retrieval", "NDCG · MRR · A/B", "8 yrs applied ML"],
   },
   {
@@ -36,7 +37,7 @@ export const TOP_CANDIDATES: RankedCandidate[] = [
     role: "Data Scientist",
     company: "Niramai",
     experience: 7,
-    score: 95,
+    score: 0.9824,
     chips: ["Production ranking", "Pre-LLM ML roots", "7 yrs applied ML"],
   },
   {
@@ -45,7 +46,7 @@ export const TOP_CANDIDATES: RankedCandidate[] = [
     role: "Junior ML Engineer",
     company: "Aganitha",
     experience: 6,
-    score: 94,
+    score: 0.9741,
     chips: ["Production ranking", "Open to relocate", "6 yrs applied ML"],
   },
   {
@@ -54,7 +55,7 @@ export const TOP_CANDIDATES: RankedCandidate[] = [
     role: "AI Research Engineer",
     company: "Yellow.ai",
     experience: 6,
-    score: 93,
+    score: 0.9655,
     chips: ["Production ranking", "Pre-LLM ML roots", "6 yrs applied ML"],
   },
 ];
