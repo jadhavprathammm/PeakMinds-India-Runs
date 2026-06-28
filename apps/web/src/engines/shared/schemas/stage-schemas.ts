@@ -35,9 +35,127 @@ export function isIdentityOutput(data: unknown): data is IdentityOutput {
 
 // ── Stage 3 — Skills ──────────────────────────────────────────────────────────
 
+export function isSkillsRawOutput(data: unknown): data is {
+  technical_skills: string[];
+  tools: string[];
+  frameworks: string[];
+  cloud_platforms: string[];
+  databases: string[];
+  domain_keywords: string[];
+  uncertain_skills: Array<{
+    skill: string;
+    likely_category: "technical_skills" | "tools" | "frameworks" | "cloud_platforms" | "databases" | "domain_keywords";
+  }>;
+  stage_confidence: number;
+  extraction_warnings: string[];
+} {
+  if (typeof data !== "object" || data === null) return false;
+  const d = data as Record<string, unknown>;
+
+  // Required top-level keys
+  const requiredKeys = [
+    "technical_skills",
+    "tools",
+    "frameworks",
+    "cloud_platforms",
+    "databases",
+    "domain_keywords",
+    "uncertain_skills",
+    "stage_confidence",
+    "extraction_warnings"
+  ];
+  for (const k of requiredKeys) {
+    if (!(k in d)) return false;
+  }
+
+  // All six category arrays: string[]
+  const categories = [
+    "technical_skills",
+    "tools",
+    "frameworks",
+    "cloud_platforms",
+    "databases",
+    "domain_keywords"
+  ];
+  for (const cat of categories) {
+    const arr = d[cat];
+    if (!Array.isArray(arr)) return false;
+    for (const item of arr) {
+      if (typeof item !== "string") return false;
+    }
+  }
+
+  // uncertain_skills: array of { skill: string, likely_category: Category }
+  const uncertain = d["uncertain_skills"];
+  if (!Array.isArray(uncertain)) return false;
+  const validCategories = ["technical_skills", "tools", "frameworks", "cloud_platforms", "databases", "domain_keywords"];
+  for (const u of uncertain) {
+    if (typeof u !== "object" || u === null) return false;
+    const uObj = u as Record<string, unknown>;
+    if (!("skill" in uObj) || typeof uObj["skill"] !== "string") return false;
+    if (!("likely_category" in uObj) || !validCategories.includes(uObj["likely_category"] as string)) return false;
+  }
+
+  // stage_confidence: number 0–1
+  const sc = d["stage_confidence"];
+  if (typeof sc !== "number" || sc < 0 || sc > 1) return false;
+
+  // extraction_warnings: string[]
+  if (!Array.isArray(d["extraction_warnings"])) return false;
+  for (const w of d["extraction_warnings"] as unknown[]) {
+    if (typeof w !== "string") return false;
+  }
+
+  return true;
+}
+
 export function isSkillsOutput(data: unknown): data is SkillsOutput {
-  // TODO: validate all six arrays exist and items are strings
-  return typeof data === "object" && data !== null;
+  if (typeof data !== "object" || data === null) return false;
+  const d = data as Record<string, unknown>;
+
+  // Required keys present
+  const requiredKeys = [
+    "technical_skills",
+    "tools",
+    "frameworks",
+    "cloud_platforms",
+    "databases",
+    "domain_keywords",
+    "stage_confidence",
+    "extraction_warnings"
+  ];
+  for (const k of requiredKeys) {
+    if (!(k in d)) return false;
+  }
+
+  // All six category arrays: string[]
+  const categories = [
+    "technical_skills",
+    "tools",
+    "frameworks",
+    "cloud_platforms",
+    "databases",
+    "domain_keywords"
+  ];
+  for (const cat of categories) {
+    const arr = d[cat];
+    if (!Array.isArray(arr)) return false;
+    for (const item of arr) {
+      if (typeof item !== "string") return false;
+    }
+  }
+
+  // stage_confidence: number 0–1
+  const sc = d["stage_confidence"];
+  if (typeof sc !== "number" || sc < 0 || sc > 1) return false;
+
+  // extraction_warnings: string[]
+  if (!Array.isArray(d["extraction_warnings"])) return false;
+  for (const w of d["extraction_warnings"] as unknown[]) {
+    if (typeof w !== "string") return false;
+  }
+
+  return true;
 }
 
 // ── Stage 4 — Experience ──────────────────────────────────────────────────────
