@@ -5,7 +5,15 @@
 
 import type { SectionDetectionOutput, EducationOutput } from "@/engines/shared/types/stage-outputs";
 import type { DegreeLevel, ProficiencyLevel } from "@/engines/shared/types/enums";
+import type { Certification, SpokenLanguage } from "@/engines/shared/types/sub-types";
+import { callClaudeWithSchema } from "@/engines/shared/utils/claude-client";
+import { isEducationRawOutput, isEducationOutput } from "@/engines/shared/schemas/stage-schemas";
+import {
+  STAGE_6_EDUCATION_PROMPT,
+  STAGE_6_EDUCATION_SYSTEM_PROMPT,
+} from "@/engines/shared/prompts/stage-6-education";
 
+// Default output returned on complete stage failure (final shape).
 export const EDUCATION_STAGE_DEFAULTS: EducationOutput = {
   highest_degree: null,
   field_of_study: null,
@@ -16,6 +24,28 @@ export const EDUCATION_STAGE_DEFAULTS: EducationOutput = {
   spoken_languages: [],
   stage_confidence: 0.1,
   extraction_warnings: ["EDUCATION_EXTRACTION_FAILED_AFTER_RETRY"],
+};
+
+// Default output for raw extraction fallback (raw shape).
+const EDUCATION_RAW_DEFAULTS = {
+  raw_education: [] as Array<{
+    degree_label: string | null;
+    field_of_study: string | null;
+    institution: string | null;
+    graduation_year: number | null;
+    is_ongoing: boolean;
+  }>,
+  raw_certifications: [] as Array<{
+    name: string;
+    issuer: string | null;
+    year: number | null;
+  }>,
+  spoken_languages_raw: [] as Array<{
+    language: string;
+    proficiency_raw: string | null;
+  }>,
+  stage_confidence: 0.1,
+  extraction_warnings: ["EDUCATION_EXTRACTION_FAILED_AFTER_RETRY"] as string[],
 };
 
 // Run Stage 6.
@@ -34,9 +64,125 @@ export const EDUCATION_STAGE_DEFAULTS: EducationOutput = {
 export async function runStage6Education(
   sections: SectionDetectionOutput,
 ): Promise<EducationOutput> {
-  // TODO: implement
-  void sections;
-  return { ...EDUCATION_STAGE_DEFAULTS };
+  // Compose input text for Claude
+  const { educationText, headerText } = composeEducationInputText(sections);
+
+  // No education section — return defaults with warning
+  if (!educationText) {
+    return {
+      ...EDUCATION_STAGE_DEFAULTS,
+      extraction_warnings: [...EDUCATION_STAGE_DEFAULTS.extraction_warnings, "NO_EDUCATION_SECTION"],
+    };
+  }
+
+  // Claude call with raw validator
+  const result = await callClaudeWithSchema(
+    {
+      prompt: STAGE_6_EDUCATION_PROMPT(educationText, headerText),
+      systemPrompt: STAGE_6_EDUCATION_SYSTEM_PROMPT,
+      maxTokens: 1024,
+      temperature: 0.2,
+    },
+    isEducationRawOutput,
+    EDUCATION_RAW_DEFAULTS,
+    "EDUCATION",
+  );
+
+  // Post-process raw output to final EducationOutput
+  const validated = postProcessEducation(result.data, result.warnings);
+
+  // Apply confidence penalty from retry
+  validated.stage_confidence = Math.max(0, validated.stage_confidence - result.confidence_penalty);
+
+  // Validate final output against EducationOutput contract
+  if (!isEducationOutput(validated)) {
+    return {
+      ...EDUCATION_STAGE_DEFAULTS,
+      extraction_warnings: [
+        ...EDUCATION_STAGE_DEFAULTS.extraction_warnings,
+        "POST_PROCESSING_VALIDATION_FAILED",
+      ],
+    };
+  }
+
+  return validated;
+}
+
+// Compose the text snippet sent to Claude.
+// Education section (primary) + header section.
+function composeEducationInputText(sections: SectionDetectionOutput): {
+  educationText: string;
+  headerText: string;
+} {
+  const educationText = sections.section_map.education ?? "";
+  const headerText = sections.section_map.header ?? "";
+  return { educationText, headerText };
+}
+
+// Post-processing: transform raw extraction into final EducationOutput.
+function postProcessEducation(
+  raw: typeof EDUCATION_RAW_DEFAULTS,
+  retryWarnings: string[],
+): EducationOutput {
+  const warnings = [...raw.extraction_warnings, ...retryWarnings];
+
+  // Normalize all degree labels
+  const normalizedDegrees: (DegreeLevel | null)[] = raw.raw_education.map((edu) =>
+    normalizeDegreeLabel(edu.degree_label),
+  );
+
+  // Compute highest degree
+  const highest_degree = computeHighestDegree(normalizedDegrees);
+
+  // Use the entry with the highest degree for field_of_study, institution, graduation_year
+  // Find index of highest degree in normalizedDegrees
+  const degreeOrder: DegreeLevel[] = ["phd", "master", "bachelor", "diploma", "bootcamp", "self_taught"];
+  let bestIdx = -1;
+  for (const level of degreeOrder) {
+    bestIdx = normalizedDegrees.findIndex((d) => d === level);
+    if (bestIdx !== -1) break;
+  }
+
+  const bestEntry = bestIdx !== -1 ? raw.raw_education[bestIdx] : null;
+
+  // Validate graduation_year range [1950, 2030]
+  let graduation_year: number | null = bestEntry?.graduation_year ?? null;
+  if (graduation_year !== null && (graduation_year < 1950 || graduation_year > 2030)) {
+    warnings.push("GRADUATION_YEAR_OUT_OF_RANGE");
+    graduation_year = null;
+  }
+
+  // Check if field_of_study is ML-related
+  const field_of_study = bestEntry?.field_of_study ?? null;
+  const has_ml_related_degree = checkMlRelatedDegree(field_of_study);
+
+  // Map certifications
+  const certifications: Certification[] = raw.raw_certifications.map((c) => ({
+    name: c.name,
+    issuer: c.issuer,
+    year: c.year,
+  }));
+
+  // Map spoken languages with proficiency normalization
+  const spoken_languages: SpokenLanguage[] = raw.spoken_languages_raw.map((l) => ({
+    language: l.language,
+    proficiency: normalizeLanguageProficiency(l.proficiency_raw),
+  }));
+
+  // Clamp stage_confidence to [0, 1]
+  const stage_confidence = Math.min(1, Math.max(0, raw.stage_confidence ?? 0.5));
+
+  return {
+    highest_degree,
+    field_of_study,
+    institution: bestEntry?.institution ?? null,
+    graduation_year,
+    has_ml_related_degree,
+    certifications,
+    spoken_languages,
+    stage_confidence,
+    extraction_warnings: warnings,
+  };
 }
 
 // Map a raw degree label string to a DegreeLevel enum value.
