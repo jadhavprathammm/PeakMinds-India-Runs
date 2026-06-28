@@ -42,41 +42,48 @@ export async function runStage6Education(
 // Map a raw degree label string to a DegreeLevel enum value.
 // Returns null if the label is unrecognisable.
 export function normalizeDegreeLabel(raw: string | null): DegreeLevel | null {
-  // TODO: implement
-  //   "B.Tech", "B.E.", "Bachelor" → "bachelor"
-  //   "M.Tech", "M.S.", "Master"  → "master"
-  //   "PhD", "Ph.D.", "Doctor"    → "phd"
-  //   "Diploma", "Polytechnic"    → "diploma"
-  //   bootcamp keywords           → "bootcamp"
-  void raw;
+  if (!raw) return null;
+  const s = raw.toLowerCase().replace(/[.\s]/g, "");
+  if (/(phd|ph\.?d|doctor)/.test(s)) return "phd";
+  if (/(m\.?tech|mtech|m\.?s\.?|ms|master|mca|mba|pgdm|msc|mcom|masteroftechnology|masterofscience|masterofcommerce)/.test(s)) return "master";
+  if (/(b\.?tech|btech|b\.?e\.?\b|be\b|bachelor|bca|bba|bsc|bcom|bachelorofengineering|bacheloroftechnology|bachelorofscience|bachelorofcommerce)/.test(s)) return "bachelor";
+  if (/(diploma|polytechnic)/.test(s)) return "diploma";
+  if (/(bootcamp)/.test(s)) return "bootcamp";
+  if (/(self.?taught|self.?study|self.?learning)/.test(s)) return "self_taught";
   return null;
 }
 
 // Select the highest degree from an array of DegreeLevel values.
 // Tier order: phd > master > bachelor > diploma > bootcamp > self_taught.
 export function computeHighestDegree(degrees: (DegreeLevel | null)[]): DegreeLevel | null {
-  // TODO: implement
-  void degrees;
+  const order: DegreeLevel[] = ["phd", "master", "bachelor", "diploma", "bootcamp", "self_taught"];
+  const valid = degrees.filter((d): d is DegreeLevel => d !== null);
+  for (const level of order) {
+    if (valid.includes(level)) return level;
+  }
   return null;
 }
 
 // Check if a field_of_study string indicates an ML-related degree.
 export function checkMlRelatedDegree(fieldOfStudy: string | null): boolean {
-  // TODO: implement keyword check
-  //   Positive: "Computer Science", "Statistics", "Machine Learning", "AI", etc.
-  //   Negative: "Finance", "Law", "History", etc.
-  void fieldOfStudy;
-  return false;
+  if (!fieldOfStudy) return false;
+  const s = fieldOfStudy.toLowerCase();
+  const positive = [
+    "computer science", "computer engineering", "machine learning", "artificial intelligence",
+    "ai", "ml", "data science", "statistics", "mathematics", "applied mathematics",
+    "physics", "electrical engineering", "electronics", "robotics", "computational",
+    "analytics", "big data", "deep learning", "neural", "nlp", "computer vision"
+  ];
+  return positive.some(k => s.includes(k));
 }
 
 // Map raw proficiency string to ProficiencyLevel enum.
 export function normalizeLanguageProficiency(raw: string | null): ProficiencyLevel {
-  // TODO: implement
-  //   "mother tongue", "native" → "native"
-  //   "fluent", "C1", "C2"     → "fluent"
-  //   "professional", "B2"     → "professional"
-  //   "conversational", "B1"   → "conversational"
-  //   "basic", "A1", "A2"      → "basic"
-  void raw;
+  if (!raw) return "basic";
+  const s = raw.toLowerCase().trim();
+  if (/native|mother.?tongue|first.?language/.test(s)) return "native";
+  if (/fluent|c1|c2|advanced/.test(s)) return "fluent";
+  if (/professional|b2|business|working.?proficiency/.test(s)) return "professional";
+  if (/conversational|b1|intermediate/.test(s)) return "conversational";
   return "basic";
 }
