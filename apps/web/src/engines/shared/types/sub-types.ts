@@ -187,6 +187,7 @@ export interface RiskSignals {
   overqualification_risk: RiskLevel;
   underqualification_risk: RiskLevel;
   overall_risk_level: RiskLevel;
+  primary_risk_factor: string;
   risk_flags: string[];
 }
 

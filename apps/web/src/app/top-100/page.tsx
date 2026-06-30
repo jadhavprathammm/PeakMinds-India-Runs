@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { TOP_100, FINDINGS, SCORE_RANGE, type RankedEntry } from "@/lib/top100data";
+import ComparePanel from "@/components/top100/ComparePanel";
 
 const FILTERS = ["All", "NLP", "Recommendation", "Search", "Senior (7+yrs)"] as const;
 type Filter = (typeof FILTERS)[number];
@@ -50,6 +51,14 @@ const HERO_STATS = [
 export default function Top100Page() {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("All");
+  const [compareIds, setCompareIds] = useState<string[]>([]);
+  const [compareOpen, setCompareOpen] = useState(false);
+
+  function toggleCompare(id: string) {
+    setCompareIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : prev.length < 2 ? [...prev, id] : prev
+    );
+  }
 
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -126,6 +135,39 @@ export default function Top100Page() {
         </div>
       </div>
 
+      {/* ── Compare FAB ──────────────────────────────────────────────────────── */}
+      {compareIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 z-40 -translate-x-1/2">
+          <div className="flex items-center gap-3 rounded-full border border-accent/40 bg-[#0c1015]/95 px-5 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-md">
+            <span className="text-[13px] text-muted">
+              {compareIds.length === 1 ? "Select 1 more to compare" : "Ready to compare"}
+            </span>
+            {compareIds.length === 2 && (
+              <button
+                onClick={() => setCompareOpen(true)}
+                className="rounded-full bg-accent px-4 py-1.5 text-[13px] font-semibold text-white shadow-[0_0_16px_rgba(255,77,141,0.4)] transition-opacity hover:opacity-90"
+              >
+                Compare →
+              </button>
+            )}
+            <button
+              onClick={() => setCompareIds([])}
+              className="text-[13px] text-subtle transition-colors hover:text-foreground"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {compareOpen && compareIds.length === 2 && (
+        <ComparePanel
+          ids={compareIds as [string, string]}
+          allEntries={TOP_100}
+          onClose={() => setCompareOpen(false)}
+        />
+      )}
+
       {/* ── Controls ─────────────────────────────────────────────────────────── */}
       <div className="sticky top-16 z-30 border-b border-border bg-surface/95 backdrop-blur-md">
         <div className="container-page py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-5">
@@ -170,6 +212,9 @@ export default function Top100Page() {
           <table className="w-full min-w-[860px] border-collapse text-left">
             <thead>
               <tr className="border-b border-border bg-surface/60">
+                <Th className="w-12 text-center">
+                  <span className="text-[10px] text-faint">CMP</span>
+                </Th>
                 <Th className="w-16 text-center">#</Th>
                 <Th className="w-44">Candidate</Th>
                 <Th>Role</Th>
@@ -183,7 +228,7 @@ export default function Top100Page() {
             <tbody>
               {results.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="py-20 text-center text-[15px] text-muted">
+                  <td colSpan={9} className="py-20 text-center text-[15px] text-muted">
                     No candidates match your search.
                   </td>
                 </tr>
@@ -198,6 +243,29 @@ export default function Top100Page() {
                         isElite ? "bg-accent/[0.025]" : i % 2 === 0 ? "bg-transparent" : "bg-surface/20",
                       ].join(" ")}
                     >
+                      {/* Compare checkbox */}
+                      <td className="px-3 py-4 text-center">
+                        <button
+                          onClick={() => toggleCompare(c.id)}
+                          aria-label={compareIds.includes(c.id) ? "Remove from comparison" : "Add to comparison"}
+                          className={[
+                            "flex h-5 w-5 items-center justify-center rounded border transition-all duration-150 mx-auto",
+                            compareIds.includes(c.id)
+                              ? "border-accent bg-accent text-white"
+                              : compareIds.length >= 2
+                              ? "border-border bg-transparent opacity-30 cursor-not-allowed"
+                              : "border-border bg-transparent hover:border-accent/60",
+                          ].join(" ")}
+                          disabled={!compareIds.includes(c.id) && compareIds.length >= 2}
+                        >
+                          {compareIds.includes(c.id) && (
+                            <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M1.5 5l2.5 2.5 4.5-4" />
+                            </svg>
+                          )}
+                        </button>
+                      </td>
+
                       {/* Rank */}
                       <td className="px-4 py-4 text-center">
                         <div className="flex flex-col items-center gap-1.5">

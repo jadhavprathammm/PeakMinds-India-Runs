@@ -74,6 +74,7 @@ const RISK_STAGE_DEFAULTS: RiskOutput = {
     overqualification_risk: "none",
     underqualification_risk: "none",
     overall_risk_level: "critical",
+    primary_risk_factor: "none",
     risk_flags: ["RISK_COMPUTATION_FAILED"],
   },
   extraction_warnings: ["RISK_COMPUTATION_FAILED"],
@@ -202,7 +203,7 @@ export async function runUnderstandingPipeline(
 
   // ── Stage 11: Risk Analysis
   const risk = await safeRun(
-    () => runStage11Risk(identity, experience, skills),
+    () => runStage11Risk(identity, experience, skills, projects, evidence, communication, quality),
     RISK_STAGE_DEFAULTS,
   );
 
@@ -373,6 +374,7 @@ function buildPreflightErrorOutput(err: PreflightError): ValidationOutput {
       overqualification_risk: "none",
       underqualification_risk: "none",
       overall_risk_level: "critical",
+      primary_risk_factor: "none",
       risk_flags: ["PREFLIGHT_FAILED"],
     },
     archetype: "generalist",
@@ -484,7 +486,7 @@ function buildMinimalProfile(): CandidateProfile {
       publication_count: 0,
       communication_score: 0,
     },
-    risk_signals: {
+risk_signals: {
       job_hopping_risk: "none",
       job_hopping_detail: null,
       evidence_gap_risk: "none",
@@ -496,6 +498,7 @@ function buildMinimalProfile(): CandidateProfile {
       overqualification_risk: "none",
       underqualification_risk: "none",
       overall_risk_level: "low",
+      primary_risk_factor: "none",
       risk_flags: [],
     },
     archetype: "generalist",

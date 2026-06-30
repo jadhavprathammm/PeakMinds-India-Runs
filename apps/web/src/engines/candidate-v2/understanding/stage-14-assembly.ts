@@ -143,6 +143,7 @@ export function runStage14Assembly(stages: AllStageOutputs): AssemblyOutput {
       overqualification_risk: "low",
       underqualification_risk: "low",
       overall_risk_level: "low",
+      primary_risk_factor: "none",
       risk_flags: [],
     },
 

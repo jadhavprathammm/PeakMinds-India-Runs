@@ -154,7 +154,7 @@ export function computeSeniorityLevel(
   ownershipSignals: OwnershipSignals,
   _totalMlMonths: number,
 ): SeniorityLevel {
-  let base = getBaseSeniority(yearsExperience);
+  const base = getBaseSeniority(yearsExperience);
   const baseIdx = SENIORITY_ORDER.indexOf(base);
 
   const titleBoost = getTitleBoost(currentTitle);
