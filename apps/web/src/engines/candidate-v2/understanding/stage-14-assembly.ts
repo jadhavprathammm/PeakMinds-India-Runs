@@ -128,6 +128,7 @@ export function runStage14Assembly(stages: AllStageOutputs): AssemblyOutput {
       },
       communication_tier: "minimal" as CommunicationTier,
       publication_count: 0,
+      communication_score: 0,
     },
 
     risk_signals: resolved.risk_signals ?? {
@@ -317,6 +318,7 @@ export function resolveConflicts(
       },
       communication_tier: "minimal" as CommunicationTier,
       publication_count: 0,
+      communication_score: 0,
     };
     draft.communication_signals.publication_count = draft.publications.length;
   }

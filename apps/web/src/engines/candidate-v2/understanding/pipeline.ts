@@ -359,6 +359,7 @@ function buildPreflightErrorOutput(err: PreflightError): ValidationOutput {
       },
       communication_tier: "minimal",
       publication_count: 0,
+      communication_score: 0,
     },
     risk_signals: {
       job_hopping_risk: "none",
@@ -481,6 +482,7 @@ function buildMinimalProfile(): CandidateProfile {
       },
       communication_tier: "minimal",
       publication_count: 0,
+      communication_score: 0,
     },
     risk_signals: {
       job_hopping_risk: "none",

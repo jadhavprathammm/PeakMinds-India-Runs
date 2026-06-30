@@ -60,6 +60,7 @@ export interface Project {
   technologies: string[];
   domain: string | null;
   impact: string | null;
+  impact_metric: string | null;
   complexity: ProjectComplexity;
   production_grade: boolean;
   active_users_estimate: number | null;
@@ -147,6 +148,7 @@ export interface CommunicationSignals {
   community: CommunitySignals;
   communication_tier: CommunicationTier;
   publication_count: number;
+  communication_score: number;
 }
 
 // ── Career Preferences ────────────────────────────────────────────────────────
