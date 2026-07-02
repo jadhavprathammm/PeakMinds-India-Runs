@@ -1,33 +1,36 @@
 # Redrob / India Runs AI Hiring Challenge — submission metadata
 # Mirrors the portal metadata (spec §10.2 / §10.3).
-#
-# Fields marked TODO_BEFORE_SUBMIT are personal/team details that must be filled
-# by the team before uploading — they are intentionally NOT auto-populated.
 
 team:
-  name: TODO_BEFORE_SUBMIT          # your registered team / participant name (also the CSV filename stem)
+  name: PeakMinds
   members:
     - name: Pratham Jadhav
-      email: rutzpratham0505@gmail.com
-    # - name: TODO_BEFORE_SUBMIT
-    #   email: TODO_BEFORE_SUBMIT
+      email: sanspratham0805@gmail.com
+    - name: Chitrangda Singh
+      email: parmarchitrangda@gmail.com
+    - name: Sumit Mate
+      email: sumitmate2005@gmail.com
 
 primary_contact:
   name: Pratham Jadhav
-  email: rutzpratham0505@gmail.com
-  phone: TODO_BEFORE_SUBMIT         # required by the portal for top-N communication
+  email: sanspratham0805@gmail.com
+  phone: "8329718161"
 
 repository:
   github_url: https://github.com/jadhavprathammm/PeakMinds-India-Runs
   reproduce_command: "python services/ranking-engine/rank.py"   # produces submissions/team_redrob.csv
 
 sandbox:
-  # Hosted demo that runs the ranking engine on a <=100-candidate sample (spec §10.5).
-  # Deploy services/ranking-engine/sandbox/app.py to Streamlit Cloud or a HF Space,
-  # then paste the public URL here.
-  url: TODO_BEFORE_SUBMIT
+  # Hosted demo that runs the ranking engine (spec §10.5).
+  # Deployed: services/ranking-engine/sandbox/app.py on Streamlit Community Cloud.
+  url: https://peakminds-ai.streamlit.app
   app_file: services/ranking-engine/sandbox/app.py
-  notes: "Streamlit app; accepts upload or bundled 100-candidate sample; CPU; produces ranked CSV."
+  notes: >-
+    Streamlit sandbox with two modes:
+    (1) Bring Your Own Candidates – upload and rank custom candidate datasets.
+    (2) Full Competition Dataset (100,000 Candidates) – reproduces the actual
+    competition ranking using the same submission pipeline and committed feature
+    artifacts. CPU-only, deterministic, and reproducible.
 
 ai_tools_declared:
   - Claude            # used as a development assistant (engineering, docs, frontend)
