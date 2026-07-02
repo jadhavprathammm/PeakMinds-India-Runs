@@ -2,13 +2,12 @@
 PeakMinds — public sandbox (Streamlit).
 
 Two modes:
-  1. Bring Your Own Candidates — load the bundled 100-candidate sample OR upload
-     candidates.jsonl (<=100 rows); features + semantic embeddings are computed
-     live, on CPU, end to end.
-  2. Full Competition Dataset (100,000 Candidates) — runs build_ranking() (from
-     rank.py) against the committed competition artifacts. No upload, no live
-     embeddings, no sampling: this is the exact code path that produced
-     submissions/team_redrob.csv.
+  1. Full Competition Dataset (100,000 Candidates) — DEFAULT. Runs build_ranking()
+     (from rank.py) against the committed competition artifacts. No upload, no
+     live embeddings, no sampling: this is the exact code path that produced our
+     officially submitted submissions/team_redrob.csv.
+  2. Bring Your Own Candidates — upload your own candidates.jsonl (<=100 rows);
+     features + semantic embeddings are computed live, on CPU, end to end.
 
 Both modes end in a ranked Top-N with grounded reasoning and a downloadable CSV.
 
@@ -25,7 +24,7 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from pipeline import (  # noqa: E402
-    rank_records, load_sample, is_sorted_desc, SAMPLE_PATH,
+    rank_records, is_sorted_desc,
     rank_full_dataset, full_dataset_size,
 )
 
@@ -39,21 +38,25 @@ st.caption(
     "Runs the real ranking engine end-to-end on CPU. No hosted LLM calls. "
     "The 7-pillar deterministic score + grounded reasoning are computed live."
 )
+st.success(
+    "✅ **This is our officially submitted solution.** *Full Competition Dataset* mode "
+    "below runs the exact code path that produced our submitted Top-100 "
+    "(`services/ranking-engine/submissions/team_redrob.csv`)."
+)
 
 with st.sidebar:
     st.header("Input")
-    mode = st.radio("Mode", [MODE_BYO, MODE_FULL])
+    mode = st.radio(
+        "Mode", [MODE_BYO, MODE_FULL], index=1,
+        help=(
+            "Full Competition Dataset reproduces our official Top-100 submission "
+            "ranking on all 100,000 candidates. Bring Your Own Candidates lets you "
+            "upload a custom pool (<=100 rows) and watch the same engine score it live."
+        ),
+    )
 
     uploaded = None
-    src = None
-    if mode == MODE_BYO:
-        src = st.radio("Candidate source", ["Bundled 100-candidate sample", "Upload candidates.jsonl"])
-        if src == "Upload candidates.jsonl":
-            uploaded = st.file_uploader("candidates.jsonl (<=100 rows recommended)", type=["jsonl", "json", "txt"])
-        topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
-        use_sem = st.checkbox("Use semantic embeddings (all-MiniLM-L6-v2)", value=True,
-                              help="First run downloads ~80 MB model. Uncheck for deterministic-only ranking.")
-    else:
+    if mode == MODE_FULL:
         st.caption(
             "Runs the exact submission ranking path against the committed "
             "competition artifacts — no upload, no live embeddings, no sampling, "
@@ -61,6 +64,15 @@ with st.sidebar:
         )
         topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
         use_sem = True  # not applicable — semantic_fit is already baked into the committed artifact
+    else:
+        st.caption(
+            "Upload a candidates.jsonl file (<=100 rows) to see the real engine "
+            "extract features, embed, score, and explain a custom pool live."
+        )
+        uploaded = st.file_uploader("candidates.jsonl (<=100 rows recommended)", type=["jsonl", "json", "txt"])
+        topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
+        use_sem = st.checkbox("Use semantic embeddings (all-MiniLM-L6-v2)", value=True,
+                              help="First run downloads ~80 MB model. Uncheck for deterministic-only ranking.")
 
     run = st.button("Run ranking", type="primary")
 
@@ -82,13 +94,10 @@ if run:
             with st.spinner(f"Ranking {dataset_size:,} candidates with the real submission engine…"):
                 df = rank_full_dataset(topk=topk)
         else:
-            if src.startswith("Bundled"):
-                records = load_sample()
-            else:
-                if not uploaded:
-                    st.error("Upload a candidates.jsonl file first.")
-                    st.stop()
-                records = _read_uploaded(uploaded)
+            if not uploaded:
+                st.error("Upload a candidates.jsonl file first.")
+                st.stop()
+            records = _read_uploaded(uploaded)
 
             dataset_size = len(records)
             if dataset_size > 100:
@@ -107,7 +116,7 @@ if run:
         scores = df["score"].tolist()
         sorted_desc = is_sorted_desc(scores)
 
-        st.subheader("Ranking result")
+        st.subheader("Official Submission Ranking" if mode == MODE_FULL else "Your Candidate Ranking")
         st.caption(
             f"All {scored_count} candidates were scored with the real model "
             f"(S = S_fit × availability), sorted highest → lowest, and only then "
@@ -148,6 +157,5 @@ else:
         )
     else:
         st.info(
-            f"Pick a source in the sidebar and press **Run ranking**. "
-            f"The bundled sample lives at `{SAMPLE_PATH.name}` (100 representative, anonymized profiles)."
+            "Upload a candidates.jsonl file (<=100 rows) in the sidebar, then press **Run ranking**."
         )
