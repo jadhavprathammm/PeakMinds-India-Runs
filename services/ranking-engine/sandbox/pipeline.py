@@ -27,8 +27,11 @@ from src.features import extract                       # noqa: E402
 from src.scoring import score_dataframe, TIER_CUTS     # noqa: E402
 from src.reasoning import reason, band_for_rank        # noqa: E402
 from src.jd_intent import JD_INTENT, JD_EXEMPLARS      # noqa: E402
+from rank import build_ranking                         # noqa: E402 - the ONE ranking implementation
 
 SAMPLE_PATH = _HERE / "sample_candidates.jsonl"
+FEATURES_PATH = _ENGINE / "artifacts" / "candidate_features.parquet"
+FACTS_PATH = _ENGINE / "artifacts" / "reasoning_facts.parquet"
 _EMB_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
@@ -121,6 +124,41 @@ def rank_records(records: list[dict], topk: int = 100, use_semantic: bool = True
             }
         )
     return pd.DataFrame(rows)
+
+
+def full_dataset_size() -> int:
+    """Row count of the committed full-dataset feature artifact.
+
+    Column-projected read (candidate_id only) so this stays fast even at 100k rows —
+    used purely to report 'Dataset size' / 'Candidates scored' without a full load.
+    """
+    return len(pd.read_parquet(FEATURES_PATH, columns=["candidate_id"]))
+
+
+def rank_full_dataset(topk: int = 100) -> pd.DataFrame:
+    """Full Competition Dataset mode: the REAL submission ranking path.
+
+    Calls build_ranking() against the committed competition artifacts — the exact
+    same function that produces submissions/team_redrob.csv. No live embedding, no
+    sampling, no reimplementation. Output is reshaped to the same column set as
+    rank_records() so the UI can render either mode identically.
+    """
+    if not FEATURES_PATH.exists():
+        raise FileNotFoundError(
+            f"Missing {FEATURES_PATH.name} at {FEATURES_PATH} — the committed "
+            "competition artifacts are required for Full Dataset mode."
+        )
+    top = build_ranking(str(FEATURES_PATH), str(FACTS_PATH), topk=topk)
+    return pd.DataFrame({
+        "candidate_id": top["candidate_id"],
+        "rank": top["rank"].astype(int),
+        "score": top["score"].astype(float),
+        "role": top["current_title"].fillna(""),
+        "company": top["current_company"].fillna(""),
+        "experience": top["yoe"].fillna(0).round().astype(int),
+        "tier": top["tier"].astype(int),
+        "reasoning": top["reasoning"],
+    })
 
 
 def load_sample() -> list[dict]:

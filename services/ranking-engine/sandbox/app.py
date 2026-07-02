@@ -1,9 +1,16 @@
 """
 PeakMinds — public sandbox (Streamlit).
 
-A judge can: load the bundled 100-candidate sample OR upload their own
-candidates.jsonl (<=100 rows), run the real ranking engine end-to-end on CPU,
-inspect the ranked Top-N with grounded reasoning, and download the submission CSV.
+Two modes:
+  1. Bring Your Own Candidates — load the bundled 100-candidate sample OR upload
+     candidates.jsonl (<=100 rows); features + semantic embeddings are computed
+     live, on CPU, end to end.
+  2. Full Competition Dataset (100,000 Candidates) — runs build_ranking() (from
+     rank.py) against the committed competition artifacts. No upload, no live
+     embeddings, no sampling: this is the exact code path that produced
+     submissions/team_redrob.csv.
+
+Both modes end in a ranked Top-N with grounded reasoning and a downloadable CSV.
 
 Run locally:   streamlit run sandbox/app.py
 Deploy:        Streamlit Community Cloud / HuggingFace Space  (entrypoint = this file)
@@ -17,7 +24,13 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pipeline import rank_records, load_sample, is_sorted_desc, SAMPLE_PATH  # noqa: E402
+from pipeline import (  # noqa: E402
+    rank_records, load_sample, is_sorted_desc, SAMPLE_PATH,
+    rank_full_dataset, full_dataset_size,
+)
+
+MODE_BYO = "Bring Your Own Candidates"
+MODE_FULL = "Full Competition Dataset (100,000 Candidates)"
 
 st.set_page_config(page_title="PeakMinds — Ranking Sandbox", page_icon="▲", layout="wide")
 
@@ -29,13 +42,26 @@ st.caption(
 
 with st.sidebar:
     st.header("Input")
-    src = st.radio("Candidate source", ["Bundled 100-candidate sample", "Upload candidates.jsonl"])
+    mode = st.radio("Mode", [MODE_BYO, MODE_FULL])
+
     uploaded = None
-    if src == "Upload candidates.jsonl":
-        uploaded = st.file_uploader("candidates.jsonl (<=100 rows recommended)", type=["jsonl", "json", "txt"])
-    topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
-    use_sem = st.checkbox("Use semantic embeddings (all-MiniLM-L6-v2)", value=True,
-                          help="First run downloads ~80 MB model. Uncheck for deterministic-only ranking.")
+    src = None
+    if mode == MODE_BYO:
+        src = st.radio("Candidate source", ["Bundled 100-candidate sample", "Upload candidates.jsonl"])
+        if src == "Upload candidates.jsonl":
+            uploaded = st.file_uploader("candidates.jsonl (<=100 rows recommended)", type=["jsonl", "json", "txt"])
+        topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
+        use_sem = st.checkbox("Use semantic embeddings (all-MiniLM-L6-v2)", value=True,
+                              help="First run downloads ~80 MB model. Uncheck for deterministic-only ranking.")
+    else:
+        st.caption(
+            "Runs the exact submission ranking path against the committed "
+            "competition artifacts — no upload, no live embeddings, no sampling, "
+            "no reimplementation. Reproduces `submissions/team_redrob.csv`."
+        )
+        topk = st.slider("Top-N to return", min_value=10, max_value=100, value=100, step=10)
+        use_sem = True  # not applicable — semantic_fit is already baked into the committed artifact
+
     run = st.button("Run ranking", type="primary")
 
 
@@ -50,27 +76,33 @@ def _read_uploaded(file) -> list[dict]:
 
 if run:
     try:
-        if src.startswith("Bundled"):
-            records = load_sample()
+        if mode == MODE_FULL:
+            dataset_size = full_dataset_size()
+            scored_count = dataset_size
+            with st.spinner(f"Ranking {dataset_size:,} candidates with the real submission engine…"):
+                df = rank_full_dataset(topk=topk)
         else:
-            if not uploaded:
-                st.error("Upload a candidates.jsonl file first.")
-                st.stop()
-            records = _read_uploaded(uploaded)
+            if src.startswith("Bundled"):
+                records = load_sample()
+            else:
+                if not uploaded:
+                    st.error("Upload a candidates.jsonl file first.")
+                    st.stop()
+                records = _read_uploaded(uploaded)
 
-        dataset_size = len(records)
-        if dataset_size > 100:
-            st.warning(
-                f"Loaded {dataset_size} candidates; this sandbox scores at most 100 at a "
-                "time (small-sample reproducibility check per the challenge spec — the full "
-                "100,000-candidate run is `services/ranking-engine/rank.py`, not this sandbox). "
-                "Scoring the first 100 as loaded; the rest are not included below."
-            )
-        records = records[:100]
-        scored_count = len(records)
+            dataset_size = len(records)
+            if dataset_size > 100:
+                st.warning(
+                    f"Loaded {dataset_size} candidates; this sandbox scores at most 100 at a "
+                    "time (small-sample reproducibility check per the challenge spec — the full "
+                    "100,000-candidate run is `services/ranking-engine/rank.py`, not this sandbox). "
+                    "Scoring the first 100 as loaded; the rest are not included below."
+                )
+            records = records[:100]
+            scored_count = len(records)
 
-        with st.spinner(f"Scoring {scored_count} candidates with the real engine…"):
-            df = rank_records(records, topk=topk, use_semantic=use_sem)
+            with st.spinner(f"Scoring {scored_count} candidates with the real engine…"):
+                df = rank_records(records, topk=topk, use_semantic=use_sem)
 
         scores = df["score"].tolist()
         sorted_desc = is_sorted_desc(scores)
@@ -82,9 +114,9 @@ if run:
             f"were the top {len(df)} selected for display below."
         )
         m1, m2, m3 = st.columns(3)
-        m1.metric("Dataset size", f"{dataset_size} candidates")
-        m2.metric("Candidates scored", f"{scored_count} candidates")
-        m3.metric("Showing top", f"{len(df)} ranked candidates")
+        m1.metric("Dataset size", f"{dataset_size:,} candidates")
+        m2.metric("Candidates scored", f"{scored_count:,} candidates")
+        m3.metric("Showing top", f"{len(df):,} ranked candidates")
 
         st.markdown("**Ranking verification**")
         v1, v2, v3, v4 = st.columns(4)
@@ -108,7 +140,14 @@ if run:
     except Exception as e:
         st.exception(e)
 else:
-    st.info(
-        f"Pick a source in the sidebar and press **Run ranking**. "
-        f"The bundled sample lives at `{SAMPLE_PATH.name}` (100 representative, anonymized profiles)."
-    )
+    if mode == MODE_FULL:
+        st.info(
+            "Press **Run ranking** to score the full committed competition dataset "
+            "(100,000 candidates) using the exact submission ranking path — no "
+            "uploads, no live embeddings, no sampling."
+        )
+    else:
+        st.info(
+            f"Pick a source in the sidebar and press **Run ranking**. "
+            f"The bundled sample lives at `{SAMPLE_PATH.name}` (100 representative, anonymized profiles)."
+        )
