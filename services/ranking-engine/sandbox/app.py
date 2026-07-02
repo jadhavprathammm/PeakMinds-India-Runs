@@ -17,7 +17,7 @@ import pandas as pd
 import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pipeline import rank_records, load_sample, SAMPLE_PATH  # noqa: E402
+from pipeline import rank_records, load_sample, is_sorted_desc, SAMPLE_PATH  # noqa: E402
 
 st.set_page_config(page_title="PeakMinds — Ranking Sandbox", page_icon="▲", layout="wide")
 
@@ -57,17 +57,46 @@ if run:
                 st.error("Upload a candidates.jsonl file first.")
                 st.stop()
             records = _read_uploaded(uploaded)
+
+        dataset_size = len(records)
+        if dataset_size > 100:
+            st.warning(
+                f"Loaded {dataset_size} candidates; this sandbox scores at most 100 at a "
+                "time (small-sample reproducibility check per the challenge spec — the full "
+                "100,000-candidate run is `services/ranking-engine/rank.py`, not this sandbox). "
+                "Scoring the first 100 as loaded; the rest are not included below."
+            )
         records = records[:100]
-        with st.spinner(f"Ranking {len(records)} candidates with the real engine…"):
+        scored_count = len(records)
+
+        with st.spinner(f"Scoring {scored_count} candidates with the real engine…"):
             df = rank_records(records, topk=topk, use_semantic=use_sem)
 
-        st.success(f"Ranked {len(records)} candidates → Top {len(df)}. "
-                   "Scores are the real model output (S = S_fit × availability).")
+        scores = df["score"].tolist()
+        sorted_desc = is_sorted_desc(scores)
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Candidates scored", len(records))
-        c2.metric("Top score", f"{df['score'].iloc[0]:.4f}")
-        c3.metric("Tier-5 in Top-10", int((df.head(10)["tier"] == 5).sum()))
+        st.subheader("Ranking result")
+        st.caption(
+            f"All {scored_count} candidates were scored with the real model "
+            f"(S = S_fit × availability), sorted highest → lowest, and only then "
+            f"were the top {len(df)} selected for display below."
+        )
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Dataset size", f"{dataset_size} candidates")
+        m2.metric("Candidates scored", f"{scored_count} candidates")
+        m3.metric("Showing top", f"{len(df)} ranked candidates")
+
+        st.markdown("**Ranking verification**")
+        v1, v2, v3, v4 = st.columns(4)
+        v1.metric("Highest score", f"{scores[0]:.6f}")
+        v2.metric("Lowest displayed score", f"{scores[-1]:.6f}")
+        v3.metric("Sorted descending", "YES" if sorted_desc else "NO — BUG")
+        v4.metric("Tier-5 in Top-10", int((df.head(10)["tier"] == 5).sum()))
+        if not sorted_desc:
+            st.error(
+                "Ranking integrity check failed: displayed scores are not in descending "
+                "order. This should never happen — please report it."
+            )
 
         st.dataframe(
             df[["rank", "candidate_id", "score", "tier", "role", "company", "experience", "reasoning"]],

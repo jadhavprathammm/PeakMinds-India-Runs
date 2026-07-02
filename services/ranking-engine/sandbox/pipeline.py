@@ -32,6 +32,16 @@ SAMPLE_PATH = _HERE / "sample_candidates.jsonl"
 _EMB_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 
+def is_sorted_desc(scores) -> bool:
+    """True iff scores[i] >= scores[i+1] for every i (descending, ties allowed).
+
+    Shared by the sandbox UI's ranking-verification panel and the module
+    self-check below, so both prove the same guarantee against the same logic.
+    """
+    arr = np.asarray(list(scores), dtype=float)
+    return bool(np.all(np.diff(arr) <= 1e-9))
+
+
 def _ref_date(records: list[dict]) -> date:
     """Anchor 'today' to the latest last_active_date in the sample (deterministic)."""
     latest = None
@@ -133,5 +143,5 @@ if __name__ == "__main__":
     print(df.head(10)[["rank", "candidate_id", "score", "tier", "role", "company"]].to_string(index=False))
     assert df["rank"].tolist() == list(range(1, len(df) + 1)), "ranks not contiguous"
     assert df["candidate_id"].is_unique, "duplicate ids"
-    assert np.all(np.diff(df["score"].to_numpy()) <= 1e-9), "score not non-increasing"
+    assert is_sorted_desc(df["score"]), "score not non-increasing"
     print("[sandbox] self-check OK")
