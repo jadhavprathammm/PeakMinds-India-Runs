@@ -8,6 +8,14 @@ import type { RankedCandidate } from "@/lib/matching";
 import UploadCard, { type UploadState } from "@/components/shared/UploadCard";
 import { SpinnerIcon } from "@/components/shared/score-display";
 import ResultsDashboard from "./ResultsDashboard";
+import TeamUploadCard from "./TeamUploadCard";
+import { toCandidatesForTeam } from "@/lib/team-candidate-adapter";
+import {
+  runTeamIntelligenceFromFiles,
+  DEFAULT_ORCHESTRATOR_CONFIG,
+  type TeamAnalysisResult,
+} from "@/engines/team-intelligence";
+import { httpSemanticBackend } from "@/lib/team-semantic-backend";
 
 interface Summary {
   total: number;
@@ -40,6 +48,11 @@ export default function RecruiterUploadClient() {
   const [runError, setRunError] = useState("");
   const [ranked, setRanked] = useState<RankedCandidate[] | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
+
+  // Team Intelligence (optional, additive) state
+  const [teamFiles, setTeamFiles] = useState<File[]>([]);
+  const [teamAnalysis, setTeamAnalysis] = useState<TeamAnalysisResult | null>(null);
+  const [teamWarning, setTeamWarning] = useState("");
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
@@ -98,11 +111,25 @@ export default function RecruiterUploadClient() {
     setDsState("idle"); setDsFilename(""); setDsError(""); setCandidates([]); setDsWarnings([]);
   }
 
+  // ── Team Intelligence handlers (optional) ─────────────────────────────────────────
+  function addTeamFiles(newFiles: File[]) {
+    setTeamFiles((prev) => [...prev, ...newFiles]);
+  }
+  function removeTeamFile(index: number) {
+    setTeamFiles((prev) => prev.filter((_, i) => i !== index));
+  }
+  function clearTeamFiles() {
+    setTeamFiles([]);
+  }
+
   // ── Run ──────────────────────────────────────────────────────────────────────────
   async function handleRun() {
     setRunning(true);
     setRunError("");
+    setTeamAnalysis(null);
+    setTeamWarning("");
     try {
+      // Existing candidate ranking — unchanged, protected production path.
       const res = await fetch("/api/rank-candidates", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -115,6 +142,27 @@ export default function RecruiterUploadClient() {
       const data = (await res.json()) as { ranked: RankedCandidate[]; summary: Summary };
       setRanked(data.ranked);
       setSummary(data.summary);
+
+      // ── Team Intelligence (optional, additive — never blocks candidate ranking) ──
+      if (teamFiles.length > 0) {
+        try {
+          // Semantic axis ON: reuse the shared MiniLM model via /api/team-embed
+          // (single batched call). Falls back to lexical if the model is offline.
+          const result = await runTeamIntelligenceFromFiles(
+            teamFiles,
+            toCandidatesForTeam(candidates),
+            { ...DEFAULT_ORCHESTRATOR_CONFIG, semantic: httpSemanticBackend },
+          );
+          setTeamAnalysis(result);
+          if (result.degraded) {
+            setTeamWarning("Team Intelligence ran with reduced signal — some documents could not be fully read.");
+          }
+        } catch (err) {
+          console.error("[team-intelligence] run failed:", err);
+          setTeamWarning("Team Intelligence could not be generated for the uploaded documents. Standard ranking is unaffected.");
+        }
+      }
+
       setTimeout(() => resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
     } catch (err) {
       setRunError(err instanceof Error ? err.message : "Ranking failed. Please try again.");
@@ -129,6 +177,9 @@ export default function RecruiterUploadClient() {
     setRanked(null);
     setSummary(null);
     setRunError("");
+    setTeamFiles([]);
+    setTeamAnalysis(null);
+    setTeamWarning("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -202,6 +253,16 @@ export default function RecruiterUploadClient() {
             </div>
           )}
 
+          {/* Team Intelligence (optional) */}
+          <div className="mt-4">
+            <TeamUploadCard
+              files={teamFiles}
+              onAdd={addTeamFiles}
+              onRemove={removeTeamFile}
+              onClear={clearTeamFiles}
+            />
+          </div>
+
           {/* Run button */}
           <div className="mt-6 flex flex-col gap-3">
             {bothReady && !running && !ranked && (
@@ -230,7 +291,13 @@ export default function RecruiterUploadClient() {
       {/* Results */}
       <div ref={resultsRef} className="container-page py-16 lg:py-24">
         {ranked && summary ? (
-          <ResultsDashboard ranked={ranked} summary={summary} onReset={handleReset} />
+          <ResultsDashboard
+            ranked={ranked}
+            summary={summary}
+            onReset={handleReset}
+            teamAnalysis={teamAnalysis}
+            teamWarning={teamWarning}
+          />
         ) : (
           <div className="rounded-card border border-dashed border-border bg-surface/30 px-8 py-16 text-center">
             <p className="text-lg leading-8 text-muted">

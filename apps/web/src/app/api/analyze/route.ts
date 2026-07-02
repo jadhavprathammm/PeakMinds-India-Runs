@@ -88,6 +88,29 @@ async function callClaude(jd: string, resume: string): Promise<AnalysisOutput> {
   return parsed;
 }
 
+// ── Weak English words that pollute strength/gap explanations ───────────────────
+const WEAK_STRENGTH_WORDS = new Set([
+  "working", "better", "highly", "across", "applications", "developers",
+  "product", "designing", "building", "creating", "improve", "improving",
+  "enhance", "enhancing", "optimize", "optimizing", "scale", "scaling",
+  "manage", "managing", "lead", "leading", "drive", "driving", "deliver",
+  "delivering", "support", "supporting", "collaborate", "collaborating",
+  "communicate", "communicating", "analyze", "analyzing", "design", "develop",
+  "implement", "implementing", "build", "building", "create", "creating",
+  "develop", "developing", "maintain", "maintaining", "monitor", "monitoring",
+  "troubleshoot", "troubleshooting", "debug", "debugging", "test", "testing",
+  "deploy", "deploying", "release", "releasing", "ship", "shipping",
+  // Additional weak words from extraction
+  "user", "mobile", "experiences", "showing", "managers", "interfaces",
+  "products", "conducting", "component", "libraries", "portfolio",
+  "showing", "end-to-end", "managers", "interfaces", "products",
+  "senior", "designer", "expert", "strong", "nice", "motion", "tokens",
+  "usability", "testing", "mockups", "maintaining", "implementation",
+  "conducting", "usability", "mockups", "maintaining", "implementation",
+  "motion", "tokens", "senior", "designer", "expert", "strong", "nice",
+  "motion", "tokens", "years", "years", "years", "years"
+]);
+
 // ── Deterministic fallback (no API key) ───────────────────────────────────────
 
 function deterministicFallback(jd: string, resume: string): AnalysisOutput {
@@ -95,32 +118,36 @@ function deterministicFallback(jd: string, resume: string): AnalysisOutput {
   const { score, matched, missing, verdict } = scoreResumeAgainstTerms(resume, jdTerms);
   const cap = capTerm;
 
+  // Filter out weak English words from matched/missing before generating explanations
+  const filteredMatched = matched.filter((t) => !WEAK_STRENGTH_WORDS.has(t.toLowerCase()));
+  const filteredMissing = missing.filter((t) => !WEAK_STRENGTH_WORDS.has(t.toLowerCase()));
+
   return {
     overall_match_score: score,
-    analysis_summary: `This resume matches approximately ${score}% of the key requirements extracted from the job description. ${matched.length > 0 ? `Strong alignment on ${matched.slice(0, 3).map(cap).join(", ")}. ` : ""}${missing.length > 0 ? `Key gaps include ${missing.slice(0, 3).map(cap).join(", ")}.` : ""}`,
-    strength_analysis: matched.slice(0, 4).map((t) => ({
+    analysis_summary: `This resume matches approximately ${score}% of the key requirements extracted from the job description. ${filteredMatched.length > 0 ? `Strong alignment on ${filteredMatched.slice(0, 3).map(cap).join(", ")}. ` : ""}${filteredMissing.length > 0 ? `Key gaps include ${filteredMissing.slice(0, 3).map(cap).join(", ")}.` : ""}`,
+    strength_analysis: filteredMatched.slice(0, 4).map((t) => ({
       title: cap(t),
       description: `Your resume demonstrates ${t}, which is a key requirement in this role. This alignment strengthens your application.`,
     })),
-    gap_analysis: missing.slice(0, 4).map((t, i) => ({
+    gap_analysis: filteredMissing.slice(0, 4).map((t, i) => ({
       title: cap(t),
       severity: (i === 0 ? "High" : i === 1 ? "High" : i === 2 ? "Medium" : "Low") as "High" | "Medium" | "Low",
       description: `The job description emphasises ${t}, which is not clearly demonstrated in your resume. Adding concrete examples would strengthen your candidacy.`,
     })),
     recruiter_perspective: {
       verdict,
-      positives: matched.slice(0, 3).map((t) => `Resume demonstrates ${t} — a requirement explicitly stated in the JD`),
-      concerns: missing.slice(0, 3).map((t) => `No clear evidence of ${t}, which appears in the job requirements`),
+      positives: filteredMatched.slice(0, 3).map((t) => `Resume demonstrates ${t} — a requirement explicitly stated in the JD`),
+      concerns: filteredMissing.slice(0, 3).map((t) => `No clear evidence of ${t}, which appears in the job requirements`),
     },
     improvement_roadmap: {
       immediate: [
-        ...missing.slice(0, 2).map((t) => `Add specific examples of your ${t} experience to your resume`),
+        ...filteredMissing.slice(0, 2).map((t) => `Add specific examples of your ${t} experience to your resume`),
         "Quantify your achievements with measurable outcomes (%, impact, users, revenue)",
       ].slice(0, 3),
       seven_day: [
         "Tailor your resume summary to reflect the specific language of this role",
         "Add a skills section that mirrors the key technologies in the job description",
-        ...missing.slice(2, 4).map((t) => `Document any experience with ${t}, even if indirect`),
+        ...filteredMissing.slice(2, 4).map((t) => `Document any experience with ${t}, even if indirect`),
       ].slice(0, 3),
       thirty_day: [
         "Complete a project or course that addresses your key skill gaps",

@@ -4,6 +4,17 @@ import { useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { RankedCandidate } from "@/lib/matching";
 import { capTerm } from "@/lib/matching";
+import type { TeamAnalysisResult, CandidateTeamFit, TeamDNA, TeamSignal, CompatibilityAxis } from "@/engines/team-intelligence";
+import {
+  teamFitBadge,
+  generateInsight,
+  whyRecommended,
+  teamDnaSummary,
+  teamDnaNarrative,
+  compatibilityReasons,
+  contributionReasons,
+  signalAxes,
+} from "@/lib/team-insights";
 import { ScoreRing, verdictBadgeClass, DownloadIcon } from "@/components/shared/score-display";
 import SearchBar from "@/components/workspace/SearchBar";
 
@@ -23,16 +34,28 @@ export default function ResultsDashboard({
   ranked,
   summary,
   onReset,
+  teamAnalysis = null,
+  teamWarning = "",
 }: {
   ranked: RankedCandidate[];
   summary: Summary;
   onReset: () => void;
+  teamAnalysis?: TeamAnalysisResult | null;
+  teamWarning?: string;
 }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<RankedCandidate | null>(null);
+
+  // Team Intelligence: index fits by candidate id (== candidate name from the adapter).
+  const fitByName = useMemo(() => {
+    const m = new Map<string, CandidateTeamFit>();
+    for (const f of teamAnalysis?.candidates ?? []) m.set(f.candidate_id, f);
+    return m;
+  }, [teamAnalysis]);
+  const hasTeam = !!teamAnalysis && fitByName.size > 0;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -99,6 +122,14 @@ export default function ResultsDashboard({
         </div>
       </section>
 
+      {/* ── Team Intelligence (optional, additive) ─────────────────────────── */}
+      {teamWarning && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/[0.06] px-5 py-3.5">
+          <p className="text-[13px] leading-[1.6] text-amber-200/80">{teamWarning}</p>
+        </div>
+      )}
+      {hasTeam && <TeamIntelligencePanel analysis={teamAnalysis!} ranked={ranked} />}
+
       {/* ── Ranked table ───────────────────────────────────────────────────── */}
       <section aria-label="Ranked candidate table">
         <div className="mb-6">
@@ -114,10 +145,13 @@ export default function ResultsDashboard({
                 <Th label="Match Score" active={sortKey === "score"} dir={sortDir} onClick={() => toggleSort("score")} />
                 <Th label="Experience" active={sortKey === "experience"} dir={sortDir} onClick={() => toggleSort("experience")} />
                 <th className="px-5 py-4">Recommendation</th>
+                {hasTeam && <th className="px-5 py-4">Team Fit</th>}
               </tr>
             </thead>
             <tbody>
-              {pageRows.map((c) => (
+              {pageRows.map((c) => {
+                const fit = hasTeam ? fitByName.get(c.name) : undefined;
+                return (
                 <tr
                   key={`${c.rank}-${c.name}`}
                   onClick={() => setSelected(c)}
@@ -134,10 +168,16 @@ export default function ResultsDashboard({
                       {c.verdict}
                     </span>
                   </td>
+                  {hasTeam && (
+                    <td className="px-5 py-4">
+                      {fit ? <TeamFitPill score={fit.team_fit_score} /> : <span className="text-[13px] text-faint">—</span>}
+                    </td>
+                  )}
                 </tr>
-              ))}
+                );
+              })}
               {pageRows.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-10 text-center text-[14px] text-muted">No candidates match your search.</td></tr>
+                <tr><td colSpan={hasTeam ? 6 : 5} className="px-5 py-10 text-center text-[14px] text-muted">No candidates match your search.</td></tr>
               )}
             </tbody>
           </table>
@@ -171,9 +211,125 @@ export default function ResultsDashboard({
 
       {/* ── Candidate drawer ───────────────────────────────────────────────── */}
       <AnimatePresence>
-        {selected && <CandidateDrawer candidate={selected} onClose={() => setSelected(null)} />}
+        {selected && (
+          <CandidateDrawer
+            candidate={selected}
+            onClose={() => setSelected(null)}
+            fit={hasTeam ? fitByName.get(selected.name) ?? null : null}
+            teamDna={teamAnalysis?.team_dna ?? null}
+          />
+        )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ── Team Intelligence panel (renders only when team docs were analysed) ──────────
+
+function TeamFitPill({ score }: { score: number }) {
+  const badge = teamFitBadge(score);
+  return (
+    <span className={["inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12px] font-semibold", badge.className].join(" ")}>
+      <span className="tabular-nums">{score}</span>
+      <span className="opacity-70">·</span>
+      {badge.label}
+    </span>
+  );
+}
+
+function TeamIntelligencePanel({ analysis, ranked }: { analysis: TeamAnalysisResult; ranked: RankedCandidate[] }) {
+  const dna = analysis.team_dna;
+  const gaps = dna.gaps.slice(0, 6);
+  const jobMatchByName = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const r of ranked) m.set(r.name, r.score);
+    return m;
+  }, [ranked]);
+
+  // Candidates ranked by team fit (the PeakMinds view — may differ from ATS job-match order).
+  const byFit = useMemo(
+    () => [...analysis.candidates].sort((a, b) => b.team_fit_score - a.team_fit_score),
+    [analysis.candidates],
+  );
+  const top = byFit[0];
+
+  return (
+    <section aria-label="Team Intelligence" className="flex flex-col gap-6 rounded-card border border-accent/20 bg-accent/[0.03] p-6 lg:p-7">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-[12.5px] font-semibold uppercase tracking-[0.14em] text-accent">Team Intelligence</p>
+          <h3 className="mt-1.5 text-2xl font-semibold text-foreground">Candidate ↔ Team Fit</h3>
+        </div>
+        <p className="text-[12px] text-muted">
+          {dna.skills.length} team skills · {gaps.length} gaps
+          {analysis.degraded ? " · reduced signal" : ""}
+        </p>
+      </div>
+
+      {/* Team DNA summary + narrative */}
+      <TeamDnaCard dna={dna} />
+
+      {/* Top recommendation */}
+      {top && (
+        <div className="grid grid-cols-1 gap-5 rounded-xl border border-accent/25 bg-accent/[0.05] p-5 lg:grid-cols-[minmax(0,1fr)_1.4fr] lg:p-6">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Top Team Recommendation</p>
+            <p className="mt-2 text-2xl font-bold text-foreground">{top.candidate_name ?? top.candidate_id}</p>
+            <div className="mt-3"><TeamFitPill score={top.team_fit_score} /></div>
+            <div className="mt-4">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-accent/80">PeakMinds Insight</p>
+              <p className="mt-1 text-[13.5px] leading-[1.65] text-foreground/75">{generateInsight(top, dna)}</p>
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-[12px] font-semibold uppercase tracking-wider text-muted">Why recommended</p>
+            <ul className="flex flex-col gap-2">
+              {whyRecommended(top, dna).map((r) => (
+                <li key={r} className="flex items-start gap-2.5 text-[13.5px] leading-[1.5] text-foreground/80">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  {r}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
+      {/* Comparison table — why PeakMinds may rank differently from a traditional ATS */}
+      <div>
+        <p className="mb-3 text-[12px] font-semibold uppercase tracking-wider text-muted">
+          Candidate comparison · Job Match vs Team Fit
+        </p>
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface/40">
+          <table className="w-full min-w-[600px] text-left">
+            <thead>
+              <tr className="border-b border-border text-[12px] font-semibold uppercase tracking-wider text-muted">
+                <th className="px-4 py-3">Candidate</th>
+                <th className="px-4 py-3 text-center">Job Match</th>
+                <th className="px-4 py-3 text-center">Compatibility</th>
+                <th className="px-4 py-3 text-center">Contribution</th>
+                <th className="px-4 py-3">Team Fit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {byFit.map((f) => (
+                <tr key={f.candidate_id} className="border-b border-border/60">
+                  <td className="px-4 py-3 text-[14px] font-medium text-foreground">{f.candidate_name ?? f.candidate_id}</td>
+                  <td className="px-4 py-3 text-center text-[13.5px] tabular-nums text-foreground/70">{jobMatchByName.get(f.candidate_id) ?? "—"}</td>
+                  <td className="px-4 py-3 text-center text-[13.5px] tabular-nums text-foreground/70">{f.compatibility.overall}</td>
+                  <td className="px-4 py-3 text-center text-[13.5px] tabular-nums text-foreground/70">{f.contribution.overall}</td>
+                  <td className="px-4 py-3"><TeamFitPill score={f.team_fit_score} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-2.5 text-[12px] leading-[1.55] text-muted">
+          A traditional ATS ranks on Job Match alone. PeakMinds weighs how a candidate fits the
+          existing team and what capabilities they add — surfacing high-impact hires an ATS would miss.
+        </p>
+      </div>
+    </section>
   );
 }
 
@@ -204,7 +360,30 @@ function ScoreCell({ score }: { score: number }) {
   );
 }
 
-function CandidateDrawer({ candidate, onClose }: { candidate: RankedCandidate; onClose: () => void }) {
+function MetricRow({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+  const color = accent ? "var(--color-accent)" : value >= 75 ? "var(--color-accent)" : value >= 60 ? "#f59e0b" : "var(--color-subtle)";
+  return (
+    <div className="flex items-center gap-3">
+      <span className="w-32 shrink-0 text-[13px] text-foreground/70">{label}</span>
+      <span className="w-9 text-right text-[14px] font-bold tabular-nums" style={{ color }}>{value}</span>
+      <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-border">
+        <div className="h-full rounded-full" style={{ width: `${Math.max(0, Math.min(100, value))}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  );
+}
+
+function CandidateDrawer({
+  candidate,
+  onClose,
+  fit = null,
+  teamDna = null,
+}: {
+  candidate: RankedCandidate;
+  onClose: () => void;
+  fit?: CandidateTeamFit | null;
+  teamDna?: TeamDNA | null;
+}) {
   return (
     <motion.div
       className="fixed inset-0 z-50 flex justify-end"
@@ -241,6 +420,40 @@ function CandidateDrawer({ candidate, onClose }: { candidate: RankedCandidate; o
         <Section title="Recruiter Note">
           <p className="text-[14px] leading-7 text-foreground/75">{candidate.note}</p>
         </Section>
+
+        {fit && teamDna && (
+          <Section title="Team Fit">
+            <div className="mb-4"><TeamFitPill score={fit.team_fit_score} /></div>
+            <div className="flex flex-col gap-2.5">
+              <MetricRow label="Job Match" value={candidate.score} />
+              <MetricRow label="Team Compatibility" value={fit.compatibility.overall} />
+              <MetricRow label="Team Contribution" value={fit.contribution.overall} />
+              <MetricRow label="Overall Team Fit" value={fit.team_fit_score} accent />
+            </div>
+
+            <AxisBreakdown fit={fit} />
+
+            <div className="mt-5 flex flex-col gap-4">
+              <ReasonList title="Why compatible" reasons={compatibilityReasons(fit)} />
+              <ReasonList title="What they add" reasons={contributionReasons(fit)} />
+            </div>
+
+            <div className="mt-5">
+              <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-accent/80">PeakMinds Insight</p>
+              <p className="text-[13.5px] leading-[1.65] text-foreground/75">{generateInsight(fit, teamDna)}</p>
+            </div>
+            {fit.contribution.fills_gaps.length > 0 && (
+              <div className="mt-4">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Fills team gaps</p>
+                <ul className="flex flex-wrap gap-2">
+                  {fit.contribution.fills_gaps.map((g) => (
+                    <li key={g} className="rounded-full border border-emerald-500/25 bg-emerald-500/[0.06] px-3 py-1 text-[12.5px] text-emerald-300/90">{capTerm(g)}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </Section>
+        )}
 
         <Section title="Strengths">
           {candidate.matched.length > 0 ? (
@@ -286,6 +499,125 @@ function Section({ title, children }: { title: string; children: React.ReactNode
     <div className="mt-8 border-t border-border pt-6">
       <p className="mb-3 text-[12px] font-semibold uppercase tracking-wider text-accent">{title}</p>
       {children}
+    </div>
+  );
+}
+
+// ── Team DNA card: narrative + strengths/gaps (with evidence drill-down) + traits ──
+
+const AXIS_UI_LABEL: Record<CompatibilityAxis, string> = {
+  skill_alignment: "Skill overlap",
+  domain_alignment: "Domain",
+  seniority_alignment: "Seniority",
+  leadership_alignment: "Leadership",
+  work_style_alignment: "Work style",
+  semantic_alignment: "Profile alignment",
+};
+
+/** A strength/gap chip that expands to show its source document + verbatim excerpt. */
+function EvidenceItem({ signal, tone }: { signal: TeamSignal; tone: "strength" | "gap" }) {
+  const [open, setOpen] = useState(false);
+  const excerpt = signal.evidence?.[0];
+  const sources = signal.sources ?? [];
+  const hasEvidence = !!excerpt || sources.length > 0;
+  const chip = tone === "gap"
+    ? "border-accent/25 bg-accent/[0.06] text-foreground/80"
+    : "border-emerald-500/25 bg-emerald-500/[0.06] text-emerald-300/90";
+  return (
+    <li className="w-full">
+      <button
+        type="button"
+        onClick={() => hasEvidence && setOpen((o) => !o)}
+        className={["inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-[12.5px] transition", chip, hasEvidence ? "cursor-pointer hover:brightness-110" : "cursor-default"].join(" ")}
+        aria-expanded={hasEvidence ? open : undefined}
+      >
+        {capTerm(signal.label)}
+        {hasEvidence && <span className="text-[9px] opacity-70" aria-hidden="true">{open ? "▲" : "▼"}</span>}
+      </button>
+      {open && hasEvidence && (
+        <div className="mt-1.5 w-full rounded-lg border border-border bg-surface/60 px-3 py-2 text-[12px] leading-[1.55] text-foreground/70">
+          {excerpt && <p className="italic">“{excerpt}”</p>}
+          <p className={excerpt ? "mt-1.5 text-muted" : "text-muted"}>
+            Found in: {sources.length > 0 ? sources.join(", ") : "extracted from team documents"}
+          </p>
+        </div>
+      )}
+    </li>
+  );
+}
+
+function TeamDnaCard({ dna }: { dna: TeamDNA }) {
+  const summary = teamDnaSummary(dna);
+  const narrative = teamDnaNarrative(dna);
+  const strengthSignals = (dna.strengths.length ? dna.strengths : dna.skills).slice(0, 5);
+  const gapSignals = dna.gaps.slice(0, 5);
+  return (
+    <div className="rounded-xl border border-border bg-surface/40 p-5 lg:p-6">
+      <p className="text-[11px] font-semibold uppercase tracking-wider text-accent">Team DNA</p>
+      <p className="mt-2 text-[14.5px] leading-[1.6] text-foreground/85">{narrative}</p>
+      <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Team strengths</p>
+          {strengthSignals.length > 0 ? (
+            <ul className="flex flex-col items-start gap-1.5">
+              {strengthSignals.map((s) => <EvidenceItem key={s.label} signal={s} tone="strength" />)}
+            </ul>
+          ) : <p className="text-[13px] text-faint">—</p>}
+        </div>
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Capability gaps</p>
+          {gapSignals.length > 0 ? (
+            <ul className="flex flex-col items-start gap-1.5">
+              {gapSignals.map((g) => <EvidenceItem key={g.label} signal={g} tone="gap" />)}
+            </ul>
+          ) : <p className="text-[13px] text-faint">None detected</p>}
+        </div>
+        <div>
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Characteristics</p>
+          {summary.characteristics.length > 0 ? (
+            <ul className="flex flex-col gap-1.5 text-[13px] text-foreground/75">
+              {summary.characteristics.map((c) => (
+                <li key={c} className="flex items-start gap-2">
+                  <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-accent" aria-hidden="true" />
+                  {c}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="text-[13px] text-faint">—</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Per-axis compatibility bars — only signal-bearing axes (weak/neutral suppressed). */
+function AxisBreakdown({ fit }: { fit: CandidateTeamFit }) {
+  const axes = signalAxes(fit);
+  if (axes.length === 0) return null;
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">Compatibility breakdown</p>
+      <div className="flex flex-col gap-2">
+        {axes.map((a) => <MetricRow key={a.axis} label={AXIS_UI_LABEL[a.axis]} value={a.score} />)}
+      </div>
+    </div>
+  );
+}
+
+/** A "✓ reason" list for explainability. Renders nothing when empty. */
+function ReasonList({ title, reasons }: { title: string; reasons: string[] }) {
+  if (reasons.length === 0) return null;
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">{title}</p>
+      <ul className="flex flex-col gap-1.5">
+        {reasons.map((r) => (
+          <li key={r} className="flex items-start gap-2 text-[13px] leading-[1.5] text-foreground/80">
+            <span className="mt-[1px] text-emerald-400" aria-hidden="true">✓</span>
+            {r}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
