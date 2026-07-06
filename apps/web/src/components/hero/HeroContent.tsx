@@ -73,6 +73,15 @@ export default function HeroContent() {
           View Architecture
           <Arrow />
         </Link>
+        <a
+          href="https://peakminds-ai.streamlit.app"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="btn btn-md btn-secondary group w-full px-8 transition-all duration-[250ms] hover:-translate-y-0.5 sm:w-auto"
+        >
+          View Streamlit Demo
+          <Arrow />
+        </a>
       </motion.div>
     </motion.div>
   );

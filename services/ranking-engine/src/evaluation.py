@@ -35,6 +35,23 @@ def average_precision(ranked_rels, total_relevant=None, thr=REL_THRESHOLD):
             ap += hits / i
     return ap / total_relevant
 
+def mrr(ranked_rels, thr=REL_THRESHOLD):
+    """Reciprocal rank of the first relevant (tier >= thr) result; 0 if none."""
+    for i, r in enumerate(ranked_rels, start=1):
+        if r >= thr:
+            return 1.0 / i
+    return 0.0
+
+
+def recall_at_k(ranked_rels, all_rels, k, thr=REL_THRESHOLD):
+    """Fraction of ALL relevant candidates that appear in the top k."""
+    total = int(np.sum(np.asarray(all_rels) >= thr))
+    if total == 0:
+        return 0.0
+    hits = int(np.sum(np.asarray(ranked_rels[:k]) >= thr))
+    return hits / total
+
+
 def composite(ranked_rels, all_rels):
     """ranked_rels: relevance of OUR ranking in order; all_rels: relevance of full pool."""
     total_rel = int(np.sum(np.asarray(all_rels) >= REL_THRESHOLD))

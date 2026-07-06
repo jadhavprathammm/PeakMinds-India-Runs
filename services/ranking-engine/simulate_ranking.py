@@ -11,7 +11,7 @@ import os, sys, numpy as np, pandas as pd
 from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.scoring import score_dataframe
-from src.evaluation import composite
+from src.evaluation import composite, mrr, recall_at_k
 _HERE = Path(__file__).resolve().parent
 ART   = Path(os.environ.get("ARTIFACTS_DIR", str(_HERE / "artifacts")))
 df = pd.read_parquet(ART / "candidate_features.parquet")
@@ -54,7 +54,8 @@ def run(use_semantic, use_avail, use_gates, label):
     allr = gold["expected_rel"].tolist()
     m = composite(ranked, allr)
     print(f"  {label:28s} NDCG@10 {m['NDCG_10']:.3f} | NDCG@50 {m['NDCG_50']:.3f} | "
-          f"MAP {m['MAP']:.3f} | P@10 {m['P_10']:.3f} | COMPOSITE {m['composite']:.3f}")
+          f"MAP {m['MAP']:.3f} | P@10 {m['P_10']:.3f} | COMPOSITE {m['composite']:.3f} | "
+          f"MRR {mrr(ranked):.3f} | R@50 {recall_at_k(ranked, allr, 50):.3f}")
     return m, sc
 
 print("\n================ PIPELINE vs ABLATIONS (composite on silver set) ================")

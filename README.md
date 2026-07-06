@@ -6,6 +6,15 @@ PeakMinds ranks 100,000 candidate profiles for a Senior AI Engineer (retrieval/r
 role and produces an explainable, reproducible Top-100 shortlist — entirely offline,
 CPU-only, with no hosted LLM calls at ranking time.
 
+## Quick Links
+
+| | |
+|---|---|
+| 🚀 **Live Demo** | [peakminds-ai.streamlit.app](https://peakminds-ai.streamlit.app) |
+| 🎥 **Demo Video** | [youtu.be/_xaAdhEKpi8](https://youtu.be/_xaAdhEKpi8) |
+| 🏗️ **Architecture** | [Jump to section](#architecture) |
+| 📋 **Submission Details** | [submission_metadata.yaml](submission_metadata.yaml) · [team_redrob.csv](services/ranking-engine/submissions/team_redrob.csv) |
+
 ## Live Demo
 
 | | Link |

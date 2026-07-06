@@ -1,0 +1,13 @@
+# Minimal, PINNED dependencies for the RANKING STEP ONLY (rank.py / verify_submission.py).
+#
+# The full requirements.txt additionally pulls torch + sentence-transformers (~2 GB),
+# which are needed only for the one-time offline embedding precompute
+# (build_embeddings.py) — NOT to reproduce the submission CSV. Stage-3 reproduction
+# should install THIS file: smaller image, faster build, no GPU/network deps,
+# comfortably inside the 5 GB disk budget.
+#
+# Versions pinned to the exact environment that produced submissions/team_redrob.csv
+# (Windows 11, Python 3.13, CPU).
+numpy==2.3.0
+pandas==2.3.2
+pyarrow==24.0.0
